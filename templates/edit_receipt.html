@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Header -->
+<div class="row mb-4">
+  <div class="col-12">
+    <h2><i class="bi bi-pencil"></i> Edit Receipt</h2>
+    <p class="text-muted">Receipt #{{ receipt.receipt_no }}</p>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<!-- Form -->
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="/edit-receipt/{{ receipt.id }}">
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label for="date" class="form-label">Date *</label>
+          <input type="date" name="date" id="date" class="form-control" value="{{ receipt.date.strftime('%Y-%m-%d') }}" required />
+        </div>
+        <div class="col-md-6">
+          <label for="receipt_no" class="form-label">Receipt Number *</label>
+          <input type="text" name="receipt_no" id="receipt_no" class="form-control" value="{{ receipt.receipt_no }}" required />
+        </div>
+      </div>
+
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label for="name" class="form-label">Name *</label>
+          <input
+            type="text"
+            name="name"
+            id="name"
+            class="form-control"
+            value="{{ receipt.name }}"
+            list="names-list"
+            required
+          />
+          <datalist id="names-list"></datalist>
+        </div>
+        <div class="col-md-6">
+          <label for="phone" class="form-label">Phone *</label>
+          <input type="tel" name="phone" id="phone" class="form-control" pattern="[0-9]{10}" maxlength="10" placeholder="10 digit mobile number" value="{{ receipt.phone }}" required />
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label for="address" class="form-label">Address</label>
+        <textarea name="address" id="address" class="form-control" rows="2">{{ receipt.address or '' }}</textarea>
+      </div>
+
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <label for="amount" class="form-label">Amount *</label>
+          <input type="number" name="amount" id="amount" class="form-control" step="0.01" min="0" value="{{ receipt.amount }}" oninput="formatAmountDisplay()" required />
+          <div id="amount-formatted" class="form-text text-primary fw-bold"></div>
+        </div>
+        <div class="col-md-4">
+          <label for="mad_category_id" class="form-label">Mad Category *</label>
+          <select name="mad_category_id" id="mad_category_id" class="form-select" required>
+            <option value="">Select</option>
+            {% for category in mad_categories %}
+            <option value="{{ category.id }}" {% if category.id == receipt.mad_category_id %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="register_id" class="form-label">Register *</label>
+          <select name="register_id" id="register_id" class="form-select" required>
+            <option value="">Select</option>
+            {% for register in registers %}
+            <option value="{{ register.id }}" {% if register.id == receipt.register_id %}selected{% endif %}>{{ register.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label for="payment_mode_id" class="form-label">Payment Mode *</label>
+          <select name="payment_mode_id" id="payment_mode_id" class="form-select" required>
+            <option value="">Select</option>
+            {% for mode in payment_modes %}
+            <option value="{{ mode.id }}" {% if mode.id == receipt.payment_mode_id %}selected{% endif %}>{{ mode.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="notes" class="form-label">Notes</label>
+          <textarea name="notes" id="notes" class="form-control" rows="1">{{ receipt.notes or '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Update Receipt</button>
+        <a href="/receipts" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Fetch unique names for suggestions
+  fetch('/api/names')
+    .then(response => response.json())
+    .then(names => {
+      const list = document.getElementById('names-list');
+      names.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        list.appendChild(option);
+      });
+    });
+
+  function formatAmountDisplay() {
+    const val = document.getElementById('amount').value;
+    if (!val) {
+      document.getElementById('amount-formatted').innerText = '';
+      return;
+    }
+    const amount = parseFloat(val);
+    const formatted = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(amount);
+    document.getElementById('amount-formatted').innerText = 'Formatted: ' + formatted;
+  }
+  // Initialize on load
+  document.addEventListener('DOMContentLoaded', formatAmountDisplay);
+</script>
+{% endblock %}

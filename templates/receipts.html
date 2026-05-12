@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Header -->
+<div class="row mb-4">
+  <div class="col-12">
+    <h2><i class="bi bi-receipt"></i> All Receipts</h2>
+    <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+  <div class="col-md-3 mb-3">
+    <label for="fy_selector" class="form-label">Financial Year</label>
+    <select id="fy_selector" class="form-select" onchange="changeFY()">
+      {% for year in available_years %}
+      <option value="{{ year }}" {% if year == current_fy %}selected{% endif %}>
+        {{ year }}-{{ year + 1 }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6 mb-3">
+    <label for="search_input" class="form-label">Search</label>
+    <div class="input-group">
+      <input type="text" id="search_input" class="form-control" placeholder="Search by receipt no or name..." value="{{ search }}">
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+        <i class="bi bi-filter"></i> Filters
+      </button>
+      <button class="btn btn-primary" onclick="search()">Search</button>
+      <button class="btn btn-outline-secondary" onclick="clearSearch()">Clear</button>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label">Export</label>
+    <button onclick="openDownloadModal('/receipts/download', document.getElementById('search_input').value)" class="btn btn-outline-primary w-100">
+      <i class="bi bi-download"></i> Download Excel
+    </button>
+  </div>
+</div>
+
+<!-- Filter Panel -->
+<div class="collapse mb-4 {% if mad_id or register_id or payment_id %}show{% endif %}" id="filterPanel">
+  <div class="card card-body shadow-sm bg-light">
+    <div class="row">
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Mad Category</label>
+        <select id="mad_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Categories</option>
+          {% for cat in mad_categories %}
+          <option value="{{ cat.id }}" {% if cat.id == mad_id %}selected{% endif %}>{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Register</label>
+        <select id="register_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Registers</option>
+          {% for reg in registers %}
+          <option value="{{ reg.id }}" {% if reg.id == register_id %}selected{% endif %}>{{ reg.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Payment Mode</label>
+        <select id="payment_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Modes</option>
+          {% for mode in payment_modes %}
+          <option value="{{ mode.id }}" {% if mode.id == payment_id %}selected{% endif %}>{{ mode.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Financial Summary -->
+<div class="row mb-4">
+  <div class="col-md-4 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Opening Balance</h6>
+        <h4 class="mb-0 text-primary fw-bold">₹{{ opening_balance | indian_currency }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Period Total</h6>
+        <h4 class="mb-0 text-success fw-bold">₹{{ period_total | indian_currency }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Closing Balance</h6>
+        <h4 class="mb-0 text-dark fw-bold">₹{{ closing_balance | indian_currency }}</h4>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Receipts Table -->
+<div class="card">
+  <div class="card-body">
+    {% if receipts %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Receipt No</th>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Address</th>
+            <th class="text-end">Amount</th>
+            <th>Category</th>
+            <th>Register</th>
+            <th>Payment</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="receipts-table-body">
+          {% for receipt in receipts %}
+          <tr>
+            <td>{{ receipt.receipt_no }}</td>
+            <td>{{ receipt.date.strftime('%d-%m-%Y') }}</td>
+            <td>{{ receipt.name }}</td>
+            <td>{{ receipt.phone }}</td>
+            <td class="text-muted">{{ receipt.address or '-' }}</td>
+            <td class="text-end">₹{{ receipt.amount | indian_currency }}</td>
+            <td>{{ receipt.mad_category.name }}</td>
+            <td>{{ receipt.register.name }}</td>
+            <td>{{ receipt.payment_mode.name }}</td>
+            <td>
+              <a href="/edit-receipt/{{ receipt.id }}" class="btn btn-sm btn-outline-primary">Edit</a>
+              <a href="/delete-receipt/{{ receipt.id }}" class="btn btn-sm btn-outline-danger">Delete</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <p class="text-muted">No receipts found.</p>
+      <a href="/add-receipt" class="btn btn-primary">Add Receipt</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+let debounceTimer;
+
+async function debouncedSearch() {
+    clearTimeout(debounceTimer);
+    const searchInput = document.getElementById("search_input");
+    const fy = document.getElementById("fy_selector").value;
+    const search = searchInput.value;
+    
+    // Get additional filters
+    const mad_id = document.getElementById("mad_filter").value;
+    const register_id = document.getElementById("register_filter").value;
+    const payment_id = document.getElementById("payment_filter").value;
+    
+    debounceTimer = setTimeout(async () => {
+        try {
+            let url = `/api/receipts?fy=${fy}&search=${encodeURIComponent(search)}`;
+            if (mad_id) url += `&mad_id=${mad_id}`;
+            if (register_id) url += `&register_id=${register_id}`;
+            if (payment_id) url += `&payment_id=${payment_id}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            updateTable(data.receipts);
+        } catch (error) {
+            console.error("Search failed:", error);
+        }
+    }, 300);
+}
+
+function updateTable(receipts) {
+    const tbody = document.getElementById("receipts-table-body");
+    const tableContainer = document.querySelector(".table-responsive");
+    const cardBody = document.querySelector(".card-body");
+
+    if (receipts.length === 0) {
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">No receipts found.</td></tr>';
+        } else {
+            cardBody.innerHTML = `
+                <div class="text-center py-5">
+                    <p class="text-muted">No receipts found.</p>
+                    <a href="/add-receipt" class="btn btn-primary">Add Receipt</a>
+                </div>`;
+        }
+        return;
+    }
+
+    // If we previously had "No receipts found" state, we might need to restore the table structure
+    if (!tbody) {
+        location.reload(); // Simplest fallback for state transition
+        return;
+    }
+
+    tbody.innerHTML = receipts.map(r => `
+        <tr>
+            <td>${r.receipt_no}</td>
+            <td>${r.date}</td>
+            <td>${r.name}</td>
+            <td>${r.phone}</td>
+            <td class="text-muted">${r.address}</td>
+            <td class="text-end">₹${r.formatted_amount}</td>
+            <td>${r.category}</td>
+            <td>${r.register}</td>
+            <td>${r.payment}</td>
+            <td>
+              <a href="/edit-receipt/${r.id}" class="btn btn-sm btn-outline-primary">Edit</a>
+              <a href="/delete-receipt/${r.id}" class="btn btn-sm btn-outline-danger">Delete</a>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function changeFY() {
+    const fy = document.getElementById("fy_selector").value;
+    const search = document.getElementById("search_input").value;
+    window.location.href = `/receipts?fy=${fy}&search=${encodeURIComponent(search)}`;
+}
+
+function search() {
+    debouncedSearch(); // Trigger immediate search logic
+}
+
+function clearSearch() {
+    document.getElementById("search_input").value = "";
+    document.getElementById("mad_filter").value = "";
+    document.getElementById("register_filter").value = "";
+    document.getElementById("payment_filter").value = "";
+    debouncedSearch();
+}
+
+document.getElementById("search_input").addEventListener("input", debouncedSearch);
+
+document.getElementById("search_input").addEventListener("keypress", function(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        search();
+    }
+});
+</script>
+{% endblock %}

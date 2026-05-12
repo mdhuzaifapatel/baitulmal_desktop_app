@@ -1,0 +1,1 @@
+pyinstaller --noconfirm --onedir --windowed --name "HSSBT" --add-data "templates;templates" --add-data "static;static" --add-data "client_secret.json;." desktop.py

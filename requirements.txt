@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+jinja2
+sqlalchemy
+python-multipart
+pandas
+openpyxl
+pywebview
+pyinstaller
+python-jose
+passlib[bcrypt]
+starlette
+xlsxwriter
+openpyxl
+google-api-python-client
+google-auth
+google_auth_oauthlib

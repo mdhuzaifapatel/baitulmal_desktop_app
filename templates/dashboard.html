@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Header -->
+<div class="row mb-4">
+  <div class="col-12">
+    <h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
+    <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p>
+  </div>
+</div>
+
+<!-- Filters and Actions -->
+<div class="row mb-4">
+  <div class="col-md-3 mb-3">
+    <label for="fy_selector" class="form-label">Financial Year</label>
+    <select id="fy_selector" class="form-select" onchange="changeFY()">
+      {% for year in available_years %}
+      <option value="{{ year }}" {% if year == current_fy %}selected{% endif %}>
+        {{ year }}-{{ year + 1 }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label">Quick Action</label>
+    <a href="/add-receipt" class="btn btn-primary w-100">
+      <i class="bi bi-plus-circle"></i> Add Receipt
+    </a>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label">View All</label>
+    <a href="/receipts" class="btn btn-outline-primary w-100">
+      <i class="bi bi-receipt"></i> All Receipts
+    </a>
+  </div>
+</div>
+
+<!-- Statistics -->
+<div class="row mb-4">
+  <div class="col-md-6 mb-3">
+    <div class="card">
+      <div class="card-body text-center py-4">
+        <h6 class="text-uppercase text-muted fw-bold mb-2">Total Receipts</h6>
+        <h2 class="fw-bold mb-0" style="color: var(--primary-color)">{{ total_receipts }}</h2>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 mb-3">
+    <div class="card">
+      <div class="card-body text-center py-4">
+        <h6 class="text-uppercase text-muted fw-bold mb-2">Total Amount</h6>
+        <h2 class="fw-bold mb-0" style="color: var(--primary-color)">₹{{ total_amount | indian_currency }}</h2>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Receipts -->
+<div class="row mb-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="mb-0">Recent Receipts</h6>
+      </div>
+      <div class="card-body">
+        {% if recent_receipts %}
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Receipt No</th>
+                <th>Date</th>
+                <th>Name</th>
+                <th class="text-end">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for receipt in recent_receipts %}
+              <tr>
+                <td>{{ receipt.receipt_no }}</td>
+                <td>{{ receipt.date.strftime('%d-%m-%Y') }}</td>
+                <td>{{ receipt.name }}</td>
+                <td class="text-end">₹{{ receipt.amount | indian_currency }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No recent receipts.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="row">
+  <div class="col-md-6 mb-3">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="mb-0">Mad-wise Summary</h6>
+      </div>
+      <div class="card-body">
+        {% if mad_totals %}
+        <table class="table table-sm">
+          <tbody>
+            {% for item in mad_totals %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td class="text-end">₹{{ item.total | indian_currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <a href="/mad-report" class="btn btn-sm btn-outline-primary w-100">View Full Report</a>
+        {% else %}
+        <p class="text-muted">No data available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6 mb-3">
+    <div class="card">
+      <div class="card-header">
+        <h6 class="mb-0">Register-wise Summary</h6>
+      </div>
+      <div class="card-body">
+        {% if register_totals %}
+        <table class="table table-sm">
+          <tbody>
+            {% for item in register_totals %}
+            <tr>
+              <td>{{ item.name }}</td>
+              <td class="text-end">₹{{ item.total | indian_currency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <a href="/register-report" class="btn btn-sm btn-outline-primary w-100">View Full Report</a>
+        {% else %}
+        <p class="text-muted">No data available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function changeFY() {
+    const fy = document.getElementById("fy_selector").value;
+    window.location.href = `/?fy=${fy}`;
+}
+</script>
+{% endblock %}
