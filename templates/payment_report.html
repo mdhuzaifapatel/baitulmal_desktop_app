@@ -5,7 +5,7 @@
 <div class="row mb-4">
   <div class="col-12">
     <h2><i class="bi bi-credit-card"></i> Payment Mode Report</h2>
-    <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p>
+    <!-- <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p> -->
   </div>
 </div>
 
@@ -31,27 +31,35 @@
 
 <!-- Financial Summary -->
 <div class="row mb-4">
-  <div class="col-md-4 mb-3">
+  <div class="col-md-3 mb-3">
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
         <h6 class="text-muted mb-2 text-uppercase small fw-bold">Opening Balance</h6>
-        <h4 class="mb-0 text-primary fw-bold">₹{{ opening_balance | indian_currency }}</h4>
+        <h4 class="mb-0 text-primary fw-bold">{{ opening_balance | indian_currency }}</h4>
       </div>
     </div>
   </div>
-  <div class="col-md-4 mb-3">
+  <div class="col-md-3 mb-3">
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
-        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Period Total</h6>
-        <h4 class="mb-0 text-success fw-bold">₹{{ period_total | indian_currency }}</h4>
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Total Receipts (+)</h6>
+        <h4 class="mb-0 text-success fw-bold">{{ period_total | indian_currency }}</h4>
       </div>
     </div>
   </div>
-  <div class="col-md-4 mb-3">
+  <div class="col-md-3 mb-3">
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
-        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Closing Balance</h6>
-        <h4 class="mb-0 text-dark fw-bold">₹{{ closing_balance | indian_currency }}</h4>
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Total Expenses (-)</h6>
+        <h4 class="mb-0 text-danger fw-bold">{{ period_expenses | indian_currency }}</h4>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body text-center">
+        <h6 class="text-muted mb-2 text-uppercase small fw-bold">Closing Balance (=)</h6>
+        <h4 class="mb-0 text-dark fw-bold">{{ closing_balance | indian_currency }}</h4>
       </div>
     </div>
   </div>
@@ -71,6 +79,7 @@
             <th>Payment Mode</th>
             <th class="text-end">Opening Balance</th>
             <th class="text-end">Receipts (+)</th>
+            <th class="text-end">Expenses (-)</th>
             <th class="text-end">Contra In (+)</th>
             <th class="text-end">Contra Out (-)</th>
             <th class="text-end">Closing Balance (=)</th>
@@ -84,22 +93,24 @@
                 {{ item.name }}
               </a>
             </td>
-            <td class="text-end text-muted">₹{{ item.opening | indian_currency }}</td>
-            <td class="text-end text-success">₹{{ item.receipts | indian_currency }}</td>
-            <td class="text-end text-primary">₹{{ item.contra_in | indian_currency }}</td>
-            <td class="text-end text-danger">₹{{ item.contra_out | indian_currency }}</td>
-            <td class="text-end fw-bold">₹{{ item.closing | indian_currency }}</td>
+            <td class="text-end text-muted">{{ item.opening | indian_currency }}</td>
+            <td class="text-end text-success">{{ item.receipts | indian_currency }}</td>
+            <td class="text-end text-danger">{{ item.expenses | indian_currency }}</td>
+            <td class="text-end text-primary">{{ item.contra_in | indian_currency }}</td>
+            <td class="text-end text-danger">{{ item.contra_out | indian_currency }}</td>
+            <td class="text-end fw-bold">{{ item.closing | indian_currency }}</td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot>
         <tr class="table-light fw-bold">
             <td>Total</td>
-            <td class="text-end">₹{{ payment_report | sum(attribute='opening') | indian_currency }}</td>
-            <td class="text-end">₹{{ payment_report | sum(attribute='receipts') | indian_currency }}</td>
-            <td class="text-end">₹{{ payment_report | sum(attribute='contra_in') | indian_currency }}</td>
-            <td class="text-end">₹{{ payment_report | sum(attribute='contra_out') | indian_currency }}</td>
-            <td class="text-end">₹{{ payment_report | sum(attribute='closing') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='opening') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='receipts') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='expenses') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='contra_in') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='contra_out') | indian_currency }}</td>
+            <td class="text-end">{{ payment_report | sum(attribute='closing') | indian_currency }}</td>
           </tr>
         </tfoot>
       </table>

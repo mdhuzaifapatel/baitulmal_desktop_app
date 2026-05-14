@@ -5,13 +5,13 @@
 <div class="row mb-4">
   <div class="col-12">
     <h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
-    <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p>
+    <!-- <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p> -->
   </div>
 </div>
 
 <!-- Filters and Actions -->
 <div class="row mb-4">
-  <div class="col-md-3 mb-3">
+  <div class="col-md-4 mb-3">
     <label for="fy_selector" class="form-label">Financial Year</label>
     <select id="fy_selector" class="form-select" onchange="changeFY()">
       {% for year in available_years %}
@@ -21,35 +21,61 @@
       {% endfor %}
     </select>
   </div>
-  <div class="col-md-3 mb-3">
-    <label class="form-label">Quick Action</label>
-    <a href="/add-receipt" class="btn btn-primary w-100">
-      <i class="bi bi-plus-circle"></i> Add Receipt
-    </a>
+  <div class="col-md-4 mb-3">
+    <label class="form-label">Quick Actions</label>
+    <div class="d-flex gap-2 flex-column flex-sm-row">
+      <a href="/add-receipt" class="btn btn-primary w-100">
+        <i class="bi bi-plus-circle"></i> Add Receipt
+      </a>
+      <a href="/add-voucher" class="btn btn-primary w-100">
+        <i class="bi bi-plus-circle"></i> Add Voucher
+      </a>
+    </div>
   </div>
-  <div class="col-md-3 mb-3">
+  <div class="col-md-4 mb-3">
     <label class="form-label">View All</label>
-    <a href="/receipts" class="btn btn-outline-primary w-100">
-      <i class="bi bi-receipt"></i> All Receipts
-    </a>
+    <div class="d-flex gap-2 flex-column flex-sm-row">
+      <a href="/receipts" class="btn btn-outline-primary w-100">
+        <i class="bi bi-receipt"></i> All Receipts
+      </a>
+      <a href="/expenses" class="btn btn-outline-primary w-100">
+        <i class="bi bi-wallet2"></i> All Vouchers
+      </a>
+    </div>
   </div>
 </div>
 
 <!-- Statistics -->
 <div class="row mb-4">
-  <div class="col-md-6 mb-3">
-    <div class="card">
+  <div class="col-md-3 mb-3">
+    <div class="card h-100">
       <div class="card-body text-center py-4">
-        <h6 class="text-uppercase text-muted fw-bold mb-2">Total Receipts</h6>
-        <h2 class="fw-bold mb-0" style="color: var(--primary-color)">{{ total_receipts }}</h2>
+        <h6 class="text-uppercase text-muted fw-bold mb-2">Receipts Count</h6>
+        <h2 class="fw-bold mb-0 text-dark">{{ total_receipt_count }}</h2>
       </div>
     </div>
   </div>
-  <div class="col-md-6 mb-3">
-    <div class="card">
+  <div class="col-md-3 mb-3">
+    <div class="card h-100 border-success border-bottom border-3">
       <div class="card-body text-center py-4">
-        <h6 class="text-uppercase text-muted fw-bold mb-2">Total Amount</h6>
-        <h2 class="fw-bold mb-0" style="color: var(--primary-color)">₹{{ total_amount | indian_currency }}</h2>
+        <h6 class="text-uppercase text-success fw-bold mb-2">Total Income</h6>
+        <h3 class="fw-bold mb-0 text-success">{{ total_amount | indian_currency }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card h-100 border-danger border-bottom border-3">
+      <div class="card-body text-center py-4">
+        <h6 class="text-uppercase text-danger fw-bold mb-2">Total Expenses</h6>
+        <h3 class="fw-bold mb-0 text-danger">{{ total_expenses | indian_currency }}</h3>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card h-100 border-primary border-bottom border-3" style="border-color: var(--primary-color) !important;">
+      <div class="card-body text-center py-4">
+        <h6 class="text-uppercase fw-bold mb-2" style="color: var(--primary-color);">Net Closing Balance</h6>
+        <h3 class="fw-bold mb-0" style="color: var(--primary-color);">{{ closing_balance | indian_currency }}</h3>
       </div>
     </div>
   </div>
@@ -80,7 +106,7 @@
                 <td>{{ receipt.receipt_no }}</td>
                 <td>{{ receipt.date.strftime('%d-%m-%Y') }}</td>
                 <td>{{ receipt.name }}</td>
-                <td class="text-end">₹{{ receipt.amount | indian_currency }}</td>
+                <td class="text-end">{{ receipt.amount | indian_currency }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -108,7 +134,7 @@
             {% for item in mad_totals %}
             <tr>
               <td>{{ item.name }}</td>
-              <td class="text-end">₹{{ item.total | indian_currency }}</td>
+              <td class="text-end">{{ item.total | indian_currency }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -133,7 +159,7 @@
             {% for item in register_totals %}
             <tr>
               <td>{{ item.name }}</td>
-              <td class="text-end">₹{{ item.total | indian_currency }}</td>
+              <td class="text-end">{{ item.total | indian_currency }}</td>
             </tr>
             {% endfor %}
           </tbody>

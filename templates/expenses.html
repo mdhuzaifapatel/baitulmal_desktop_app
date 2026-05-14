@@ -1,0 +1,238 @@
+{% extends "base.html" %} {% block content %}
+<!-- Header -->
+<div class="row mb-4 align-items-center">
+  <div class="col-md-6 col-12 text-center text-md-start mb-2 mb-md-0">
+    <h2 class="fw-bold"><i class="bi bi-wallet2"></i> Expense Vouchers</h2>
+  </div>
+  <div class="col-md-6 col-12 text-center text-md-end">
+    <a href="/add-voucher" class="btn btn-primary btn-lg shadow-sm">
+      <i class="bi bi-plus-circle"></i> New Voucher
+    </a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-4">
+  <div class="col-md-3 mb-3">
+    <label for="fy_selector" class="form-label">Financial Year</label>
+    <select id="fy_selector" class="form-select" onchange="changeFY()">
+      {% for year in available_years %}
+      <option value="{{ year }}" {% if year == current_fy %}selected{% endif %}>
+        {{ year }}-{{ year + 1 }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label small fw-bold">Search</label>
+    <div class="input-group">
+      <input type="text" id="search_input" class="form-control" placeholder="Search by Voucher No or Name.." value="{{ search }}" oninput="debouncedSearch()"/>
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+        <i class="bi bi-filter"></i> Filters
+      </button>
+      <button class="btn btn-primary" type="button" onclick="debouncedSearch()" title="Search">
+        <i class="bi bi-search"></i>
+      </button>
+      <button class="btn btn-outline-danger" type="button" onclick="clearSearch()" title="Clear Search">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <label class="form-label">Export</label>
+    <button onclick="openDownloadModal('/expenses/download', document.getElementById('search_input').value, {mad_id: document.getElementById('mad_filter').value, expense_category_id: document.getElementById('expense_filter').value, payment_id: document.getElementById('payment_filter').value})" class="btn btn-outline-primary w-100">
+      <i class="bi bi-download"></i> Download Excel
+    </button>
+  </div>
+</div>
+
+<!-- Filter Panel -->
+<div class="collapse mb-4 {% if mad_id or expense_category_id or payment_id %}show{% endif %}" id="filterPanel">
+  <div class="card card-body shadow-sm bg-light border-0">
+    <div class="row">
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Mad Category</label>
+        <select id="mad_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Categories</option>
+          {% for category in mad_categories %}
+          <option value="{{ category.id }}" {% if category.id == mad_id %}selected{% endif %}>{{ category.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Expense Category</label>
+        <select id="expense_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Categories</option>
+          {% for category in expense_categories %}
+          <option value="{{ category.id }}" {% if category.id == expense_category_id %}selected{% endif %}>{{ category.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4 mb-2">
+        <label class="form-label small fw-bold">Payment Mode</label>
+        <select id="payment_filter" class="form-select form-select-sm" onchange="debouncedSearch()">
+          <option value="">All Modes</option>
+          {% for mode in payment_modes %}
+          <option value="{{ mode.id }}" {% if mode.id == payment_id %}selected{% endif %}>{{ mode.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    {% if expenses %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th>Voucher No</th>
+            <th>Paid To</th>
+            <th>Phone</th>
+            <th>Mad Category</th>
+            <th>Expense Category</th>
+            <th>Payment</th>
+            <th class="text-end">Amount</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="expenses-table-body">
+          {% for exp in expenses %}
+          <tr>
+            <td>{{ exp.date.strftime('%d-%m-%Y') }}</td>
+            <td>{{ exp.voucher_no }}</td>
+            <td>{{ exp.name }}</td>
+            <td>{{ exp.phone }}</td>
+            <td>{{ exp.mad_category.name }}</td>
+            <td>{{ exp.expense_category.name }}</td>
+            <td>{{ exp.payment_mode.name }}</td>
+            <td class="text-end">{{ exp.amount | indian_currency }}</td>
+            <td>
+              <div class="btn-group">
+                <a href="/edit-voucher/{{ exp.id }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <a href="/delete-voucher/{{ exp.id }}" class="btn btn-sm btn-outline-danger" title="Delete">
+                  <i class="bi bi-trash"></i>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+      <i class="bi bi-inbox text-muted display-1"></i>
+      <p class="text-muted mt-3">No expense vouchers found for this period.</p>
+      <a href="/add-voucher" class="btn btn-primary mt-2">Add First Voucher</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+let debounceTimer;
+
+async function debouncedSearch() {
+    clearTimeout(debounceTimer);
+    const searchInput = document.getElementById("search_input");
+    const fy = document.getElementById("fy_selector").value;
+    const search = searchInput ? searchInput.value : '';
+    
+    // Get additional filters if filter panel exists
+    const mad_id = document.getElementById("mad_filter") ? document.getElementById("mad_filter").value : '';
+    const expense_id = document.getElementById("expense_filter") ? document.getElementById("expense_filter").value : '';
+    const payment_id = document.getElementById("payment_filter") ? document.getElementById("payment_filter").value : '';
+    
+    debounceTimer = setTimeout(async () => {
+        try {
+            let url = `/api/expenses?fy=${fy}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+            if (mad_id) url += `&mad_id=${mad_id}`;
+            if (expense_id) url += `&expense_category_id=${expense_id}`;
+            if (payment_id) url += `&payment_id=${payment_id}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            updateTable(data.expenses);
+        } catch (error) {
+            console.error("Search failed:", error);
+        }
+    }, 300);
+}
+
+function updateTable(expenses) {
+    const tbody = document.getElementById("expenses-table-body");
+    const cardBody = document.querySelector(".card-body");
+
+    if (expenses.length === 0) {
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">No expense vouchers found.</td></tr>';
+        } else {
+            cardBody.innerHTML = `
+                <div class="text-center py-5">
+                    <p class="text-muted">No expense vouchers found.</p>
+                    <a href="/add-voucher" class="btn btn-primary mt-2">Add First Voucher</a>
+                </div>`;
+        }
+        return;
+    }
+
+    if (!tbody) {
+        location.reload(); 
+        return;
+    }
+
+    tbody.innerHTML = expenses.map(e => `
+        <tr>
+            <td>${e.date}</td>
+            <td>${e.voucher_no}</td>
+            <td>${e.name}</td>
+            <td>${e.phone}</td>
+            <td>${e.mad_category}</td>
+            <td>${e.expense_category}</td>
+            <td>${e.payment}</td>
+            <td class="text-end">${e.formatted_amount}</td>
+            <td>
+              <div class="btn-group">
+                <a href="/edit-voucher/${e.id}" class="btn btn-sm btn-outline-primary" title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <a href="/delete-voucher/${e.id}" class="btn btn-sm btn-outline-danger" title="Delete">
+                  <i class="bi bi-trash"></i>
+                </a>
+              </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function clearSearch() {
+    const searchInput = document.getElementById("search_input");
+    if (searchInput) searchInput.value = "";
+    
+    const madFilter = document.getElementById("mad_filter");
+    if (madFilter) madFilter.value = "";
+    
+    const expenseFilter = document.getElementById("expense_filter");
+    if (expenseFilter) expenseFilter.value = "";
+    
+    const paymentFilter = document.getElementById("payment_filter");
+    if (paymentFilter) paymentFilter.value = "";
+    
+    debouncedSearch();
+}
+
+function changeFY() {
+    const fy = document.getElementById("fy_selector").value;
+    const search = document.getElementById("search_input") ? document.getElementById("search_input").value : '';
+    window.location.href = `/expenses?fy=${fy}&search=${encodeURIComponent(search)}`;
+}
+</script>
+{% endblock %}
