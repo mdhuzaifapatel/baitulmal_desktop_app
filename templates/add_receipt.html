@@ -22,6 +22,7 @@
             name="date"
             id="date"
             class="form-control"
+            value="{{ date or '' }}"
             required
           />
         </div>
@@ -32,6 +33,7 @@
             name="receipt_no"
             id="receipt_no"
             class="form-control"
+            value="{{ receipt_no or '' }}"
             required
           />
         </div>
@@ -46,6 +48,9 @@
             id="name"
             class="form-control"
             list="names-list"
+            oninput="capitalizeName(this)"
+            placeholder="Person or Donor Name"
+            value="{{ name or '' }}"
             required
           />
           <datalist id="names-list"></datalist>
@@ -60,6 +65,7 @@
             pattern="[0-9]{10}"
             maxlength="10"
             placeholder="10 digit mobile number"
+            value="{{ phone or '' }}"
             required
           />
         </div>
@@ -72,24 +78,10 @@
           id="address"
           class="form-control"
           rows="2"
-        ></textarea>
+        >{{ address or '' }}</textarea>
       </div>
 
       <div class="row mb-3">
-        <div class="col-md-4">
-          <label for="amount" class="form-label">Amount *</label>
-          <input
-            type="number"
-            name="amount"
-            id="amount"
-            class="form-control"
-            step="0.01"
-            min="0"
-            oninput="formatAmountDisplay()"
-            required
-          />
-          <div id="amount-formatted" class="form-text text-primary fw-bold"></div>
-        </div>
         <div class="col-md-4">
           <label for="mad_category_id" class="form-label">Mad Category *</label>
           <select
@@ -98,9 +90,9 @@
             class="form-select"
             required
           >
-            <option value="">Select</option>
+            <option value="">Select Mad</option>
             {% for category in mad_categories %}
-            <option value="{{ category.id }}">{{ category.name }}</option>
+            <option value="{{ category.id }}" {% if mad_category_id|string == category.id|string %}selected{% endif %}>{{ category.name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -112,16 +104,13 @@
             class="form-select"
             required
           >
-            <option value="">Select</option>
+            <option value="">Select Register</option>
             {% for register in registers %}
-            <option value="{{ register.id }}">{{ register.name }}</option>
+            <option value="{{ register.id }}" {% if register_id|string == register.id|string %}selected{% endif %}>{{ register.name }}</option>
             {% endfor %}
           </select>
         </div>
-      </div>
-
-      <div class="row mb-3">
-        <div class="col-md-6">
+        <div class="col-md-4">
           <label for="payment_mode_id" class="form-label">Payment Mode *</label>
           <select
             name="payment_mode_id"
@@ -131,18 +120,53 @@
           >
             <option value="">Select</option>
             {% for mode in payment_modes %}
-            <option value="{{ mode.id }}">{{ mode.name }}</option>
+            <option value="{{ mode.id }}" {% if payment_mode_id|string == mode.id|string %}selected{% endif %}>{{ mode.name }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6">
+      </div>
+
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <label for="amount" class="form-label">Amount *</label>
+          <div class="input-group">
+            <span class="input-group-text bg-light border-end-0">₹</span>
+            <input
+              type="number"
+              name="amount"
+              id="amount"
+              class="form-control border-start-0 text-end"
+              step="0.01"
+              min="0"
+              oninput="formatAmountDisplay()"
+              value="{{ amount or '' }}"
+              required
+            />
+          </div>
+          <div id="amount-formatted" class="form-text text-primary fw-bold text-end"></div>
+        </div>
+        <div class="col-md-4">
+          <label for="referred_by" class="form-label">Referred By</label>
+          <input
+            type="text"
+            name="referred_by"
+            id="referred_by"
+            class="form-control"
+            list="names-list"
+            oninput="capitalizeName(this)"
+            placeholder=""
+            value="{{ referred_by or '' }}"
+          />
+        </div>
+        <div class="col-md-8 mt-2">
           <label for="notes" class="form-label">Notes</label>
           <textarea
             name="notes"
             id="notes"
             class="form-control"
-            rows="1"
-          ></textarea>
+            rows="2"
+            placeholder="Description.."
+          >{{ notes or '' }}</textarea>
         </div>
       </div>
 
@@ -155,10 +179,12 @@
 </div>
 
 <script>
-  document.getElementById("date").valueAsDate = new Date();
+  if (!document.getElementById("date").value) {
+    document.getElementById("date").valueAsDate = new Date();
+  }
 
-  // Fetch unique names for suggestions
-  fetch('/api/names')
+  // Fetch unique names for suggestions (Receipts only)
+  fetch('/api/names/receipts')
     .then(response => response.json())
     .then(names => {
       const list = document.getElementById('names-list');
@@ -168,6 +194,14 @@
         list.appendChild(option);
       });
     });
+
+  function capitalizeName(input) {
+    const words = input.value.split(' ');
+    const capitalizedWords = words.map(word => {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+    input.value = capitalizedWords.join(' ');
+  }
 
   function formatAmountDisplay() {
     const val = document.getElementById('amount').value;
@@ -181,7 +215,7 @@
       currency: 'INR',
       minimumFractionDigits: 2
     }).format(amount);
-    document.getElementById('amount-formatted').innerText = 'Formatted: ' + formatted;
+    document.getElementById('amount-formatted').innerText = formatted;
   }
   // Initialize on load if value exists
   window.onload = formatAmountDisplay;

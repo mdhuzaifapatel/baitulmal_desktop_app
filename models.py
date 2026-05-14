@@ -7,6 +7,7 @@ class MadCategory(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
+    initial_balance = Column(Float, default=0.0)
     
     def __repr__(self):
         return f"<MadCategory(name='{self.name}')>"
@@ -16,6 +17,7 @@ class Register(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
+    initial_balance = Column(Float, default=0.0)
     
     def __repr__(self):
         return f"<Register(name='{self.name}')>"
@@ -25,6 +27,7 @@ class PaymentMode(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
+    initial_balance = Column(Float, default=0.0)
     
     def __repr__(self):
         return f"<PaymentMode(name='{self.name}')>"
@@ -39,6 +42,7 @@ class Receipt(Base):
     phone = Column(String, nullable=False)
     address = Column(String)
     amount = Column(Float, nullable=False)
+    referred_by = Column(String)
     notes = Column(String)
     
     # Foreign keys
@@ -67,3 +71,37 @@ class ContraEntry(Base):
 
     def __repr__(self):
         return f"<ContraEntry(amount={self.amount}, from={self.from_payment_mode_id}, to={self.to_payment_mode_id})>"
+
+class ExpenseCategory(Base):
+    __tablename__ = "expense_categories"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    
+    def __repr__(self):
+        return f"<ExpenseCategory(name='{self.name}')>"
+
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id = Column(Integer, primary_key=True)
+    voucher_no = Column(String, nullable=False)
+    date = Column(Date, nullable=False)
+    name = Column(String, nullable=False)
+    phone = Column(String)
+    amount = Column(Float, nullable=False)
+    referred_by = Column(String)
+    notes = Column(String)
+    
+    # Foreign keys
+    mad_category_id = Column(Integer, ForeignKey("mad_categories.id"), nullable=False)
+    expense_category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=False)
+    payment_mode_id = Column(Integer, ForeignKey("payment_modes.id"), nullable=False)
+    
+    # Relationships
+    mad_category = relationship("MadCategory")
+    expense_category = relationship("ExpenseCategory")
+    payment_mode = relationship("PaymentMode")
+
+    def __repr__(self):
+        return f"<Expense(voucher='{self.voucher_no}', amount={self.amount})>"

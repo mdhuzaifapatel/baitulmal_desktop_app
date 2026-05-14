@@ -5,27 +5,27 @@
   <div class="col-md-6">
     <div class="card border-danger">
       <div class="card-header bg-danger text-white">
-        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Confirm Deletion</h5>
+        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Confirm Contra Deletion</h5>
       </div>
       <div class="card-body">
-        <p>Are you sure you want to delete this receipt?</p>
+        <p>Are you sure you want to delete this contra entry?</p>
         
         <table class="table table-borderless table-sm">
           <tr>
-            <td><strong>Receipt No:</strong></td>
-            <td>{{ receipt.receipt_no }}</td>
-          </tr>
-          <tr>
             <td><strong>Date:</strong></td>
-            <td>{{ receipt.date.strftime('%d-%m-%Y') }}</td>
+            <td>{{ entry.date.strftime('%d-%m-%Y') }}</td>
           </tr>
           <tr>
-            <td><strong>Name:</strong></td>
-            <td>{{ receipt.name }}</td>
+            <td><strong>From:</strong></td>
+            <td><span class="badge bg-danger">{{ entry.from_payment_mode.name }}</span></td>
+          </tr>
+          <tr>
+            <td><strong>To:</strong></td>
+            <td><span class="badge bg-success">{{ entry.to_payment_mode.name }}</span></td>
           </tr>
           <tr>
             <td><strong>Amount:</strong></td>
-            <td>{{ receipt.amount | indian_currency }}</td>
+            <td>{{ entry.amount | indian_currency }}</td>
           </tr>
         </table>
 
@@ -35,15 +35,15 @@
         <div class="alert alert-danger" role="alert">{{ error }}</div>
         {% endif %}
 
-        <form method="post" action="/delete-receipt/{{ receipt.id }}">
+        <form method="post" action="/delete-contra/{{ entry.id }}">
           <div class="mb-3">
             <label for="password" class="form-label">Enter Password to Confirm</label>
             <input type="password" name="password" id="password" class="form-control" required autofocus>
             <div class="form-text text-muted">Please enter your admin password to proceed with deletion.</div>
           </div>
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-danger">Delete Receipt</button>
-            <a href="/receipts" class="btn btn-outline-secondary">Cancel</a>
+            <button type="submit" class="btn btn-danger">Delete Entry</button>
+            <a href="/contra" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
       </div>

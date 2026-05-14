@@ -1,0 +1,134 @@
+{% extends "base.html" %} {% block content %}
+<!-- Header -->
+<div class="row mb-4">
+  <div class="col-12">
+    <h2><i class="bi bi-pencil-square"></i> Edit Expense Voucher</h2>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<!-- Form -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-4">
+    <form method="post" action="/edit-voucher/{{ expense.id }}">
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <label for="date" class="form-label">Date *</label>
+          <input type="date" name="date" id="date" class="form-control" value="{{ expense.date.strftime('%Y-%m-%d') }}" required />
+        </div>
+        <div class="col-md-6">
+          <label for="voucher_no" class="form-label">Voucher / Cheque No *</label>
+          <input type="text" name="voucher_no" id="voucher_no" class="form-control" value="{{ expense.voucher_no }}" required />
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <label for="name" class="form-label">Name (Paid To) *</label>
+          <input type="text" name="name" id="name" class="form-control" list="names-list" oninput="capitalizeName(this)" value="{{ expense.name }}" required />
+          <datalist id="names-list"></datalist>
+        </div>
+        <div class="col-md-6">
+          <label for="phone" class="form-label">Mobile Number</label>
+          <input type="tel" name="phone" id="phone" class="form-control" pattern="[0-9]{10}" maxlength="10" value="{{ expense.phone or '' }}" />
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <label for="mad_category_id" class="form-label">Mad (Fund Source) *</label>
+          <select name="mad_category_id" id="mad_category_id" class="form-select" required>
+            <option value="">Select Mad</option>
+            {% for category in mad_categories %}
+            <option value="{{ category.id }}" {% if category.id == expense.mad_category_id %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="expense_category_id" class="form-label">Expense Category *</label>
+          <select name="expense_category_id" id="expense_category_id" class="form-select" required>
+            <option value="">Select Category</option>
+            {% for category in expense_categories %}
+            <option value="{{ category.id }}" {% if category.id == expense.expense_category_id %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="payment_mode_id" class="form-label">Payment Mode *</label>
+          <select name="payment_mode_id" id="payment_mode_id" class="form-select" required>
+            <option value="">Select Mode</option>
+            {% for mode in payment_modes %}
+            <option value="{{ mode.id }}" {% if mode.id == expense.payment_mode_id %}selected{% endif %}>{{ mode.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <label for="amount" class="form-label">Amount *</label>
+          <div class="input-group">
+            <span class="input-group-text bg-light border-end-0">₹</span>
+            <input type="number" name="amount" id="amount" class="form-control border-start-0 text-end" step="0.01" min="0" oninput="formatAmountDisplay()" value="{{ expense.amount }}" required />
+          </div>
+          <div id="amount-formatted" class="form-text text-primary mt-2 text-end" style="min-height: 1.5em;"></div>
+        </div>
+        <div class="col-md-4">
+          <label for="referred_by" class="form-label">Referred By</label>
+          <input type="text" name="referred_by" id="referred_by" class="form-control" list="names-list" oninput="capitalizeName(this)" value="{{ expense.referred_by or '' }}" placeholder="" />
+        </div>
+        <div class="col-md-8">
+          <label for="notes" class="form-label">Notes</label>
+          <textarea name="notes" id="notes" class="form-control" rows="2">{{ expense.notes or '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="d-flex gap-3 mt-4">
+        <button type="submit" class="btn btn-primary px-5">Save Changes</button>
+        <a href="/expenses" class="btn btn-outline-secondary px-5">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  fetch('/api/names/vouchers')
+    .then(response => response.json())
+    .then(names => {
+      const list = document.getElementById('names-list');
+      names.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        list.appendChild(option);
+      });
+    });
+
+  function capitalizeName(input) {
+    const words = input.value.split(' ');
+    const capitalizedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1));
+    input.value = capitalizedWords.join(' ');
+  }
+
+  function formatAmountDisplay() {
+    const val = document.getElementById('amount').value;
+    const preview = document.getElementById('amount-formatted');
+    if (!val) {
+      preview.innerText = '';
+      return;
+    }
+    const amount = parseFloat(val);
+    const formatted = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(amount);
+    preview.innerText = formatted;
+  }
+  
+  // Format initially
+  formatAmountDisplay();
+</script>
+{% endblock %}

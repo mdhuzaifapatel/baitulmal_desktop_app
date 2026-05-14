@@ -89,7 +89,20 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
+          <label for="referred_by" class="form-label">Referred By</label>
+          <input
+            type="text"
+            name="referred_by"
+            id="referred_by"
+            class="form-control"
+            list="names-list"
+            oninput="capitalizeName(this)"
+            value="{{ receipt.referred_by or '' }}"
+            placeholder=""
+          />
+        </div>
+        <div class="col-md-8">
           <label for="notes" class="form-label">Notes</label>
           <textarea name="notes" id="notes" class="form-control" rows="1">{{ receipt.notes or '' }}</textarea>
         </div>
@@ -104,8 +117,8 @@
 </div>
 
 <script>
-  // Fetch unique names for suggestions
-  fetch('/api/names')
+  // Fetch unique names for suggestions (Receipts only)
+  fetch('/api/names/receipts')
     .then(response => response.json())
     .then(names => {
       const list = document.getElementById('names-list');
@@ -128,7 +141,7 @@
       currency: 'INR',
       minimumFractionDigits: 2
     }).format(amount);
-    document.getElementById('amount-formatted').innerText = 'Formatted: ' + formatted;
+    document.getElementById('amount-formatted').innerText = formatted;
   }
   // Initialize on load
   document.addEventListener('DOMContentLoaded', formatAmountDisplay);

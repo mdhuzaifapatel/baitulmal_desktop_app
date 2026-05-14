@@ -5,7 +5,7 @@
 <div class="row mb-4">
   <div class="col-12">
     <h2><i class="bi bi-pie-chart"></i> Mad-wise Report</h2>
-    <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p>
+    <!-- <p class="text-muted">Financial Year {{ current_fy }}-{{ current_fy + 1 }}</p> -->
   </div>
 </div>
 
@@ -35,7 +35,7 @@
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
         <h6 class="text-muted mb-2 text-uppercase small fw-bold">Opening Balance</h6>
-        <h4 class="mb-0 text-primary fw-bold">₹{{ opening_balance | indian_currency }}</h4>
+        <h4 class="mb-0 text-primary fw-bold">{{ opening_balance | indian_currency }}</h4>
       </div>
     </div>
   </div>
@@ -43,7 +43,7 @@
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
         <h6 class="text-muted mb-2 text-uppercase small fw-bold">Period Total</h6>
-        <h4 class="mb-0 text-success fw-bold">₹{{ period_total | indian_currency }}</h4>
+        <h4 class="mb-0 text-success fw-bold">{{ period_total | indian_currency }}</h4>
       </div>
     </div>
   </div>
@@ -51,7 +51,7 @@
     <div class="card bg-white border-0 shadow-sm h-100">
       <div class="card-body text-center">
         <h6 class="text-muted mb-2 text-uppercase small fw-bold">Closing Balance</h6>
-        <h4 class="mb-0 text-dark fw-bold">₹{{ closing_balance | indian_currency }}</h4>
+        <h4 class="mb-0 text-dark fw-bold">{{ closing_balance | indian_currency }}</h4>
       </div>
     </div>
   </div>
@@ -69,13 +69,15 @@
         <thead>
           <tr>
             <th>Mad Category</th>
+            <th class="text-end">Opening</th>
+            <th class="text-end">Receipts (In)</th>
+            <th class="text-end">Expenses (Out)</th>
+            <th class="text-end">Closing</th>
             <th class="text-center">Count</th>
-            <th class="text-end">Total</th>
-            <th class="text-end">%</th>
           </tr>
         </thead>
         <tbody>
-          {% set grand_total = mad_report | sum(attribute='total') %}
+          {% set grand_total = mad_report | sum(attribute='period_in') %}
           {% for item in mad_report %}
           <tr>
             <td>
@@ -83,18 +85,22 @@
                 {{ item.name }}
               </a>
             </td>
+            <td class="text-end text-muted">{{ item.opening | indian_currency }}</td>
+            <td class="text-end text-success">{{ item.period_in | indian_currency }}</td>
+            <td class="text-end text-danger">{{ item.period_out | indian_currency }}</td>
+            <td class="text-end fw-bold">{{ item.closing | indian_currency }}</td>
             <td class="text-center">{{ item.count }}</td>
-            <td class="text-end">₹{{ item.total | indian_currency }}</td>
-            <td class="text-end">{{ "%.1f"|format((item.total / grand_total * 100) if grand_total > 0 else 0) }}%</td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot>
           <tr class="table-light fw-bold">
             <td>Total</td>
+            <td class="text-end">{{ mad_report | sum(attribute='opening') | indian_currency }}</td>
+            <td class="text-end text-success">{{ grand_total | indian_currency }}</td>
+            <td class="text-end text-danger">{{ mad_report | sum(attribute='period_out') | indian_currency }}</td>
+            <td class="text-end">{{ mad_report | sum(attribute='closing') | indian_currency }}</td>
             <td class="text-center">{{ mad_report | sum(attribute='count') }}</td>
-            <td class="text-end">₹{{ grand_total | indian_currency }}</td>
-            <td class="text-end">100%</td>
           </tr>
         </tfoot>
       </table>

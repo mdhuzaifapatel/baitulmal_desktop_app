@@ -1,0 +1,166 @@
+{% extends "base.html" %} {% block content %}
+<!-- Header -->
+<div class="row mb-4">
+  <div class="col-12">
+    <h2 class="fw-bold"><i class="bi bi-file-earmark-plus"></i> Add New Expense Voucher</h2>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<!-- Form -->
+<div class="card border-0">
+  <div class="card-body p-4">
+    <form method="post" action="/add-voucher">
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <label for="date" class="form-label">Date *</label>
+          <input type="date" name="date" id="date" class="form-control" value="{{ date or '' }}" required />
+        </div>
+        <div class="col-md-6">
+          <label for="voucher_no" class="form-label">Voucher / Cheque No *</label>
+          <input type="text" name="voucher_no" id="voucher_no" class="form-control" placeholder="Enter number" value="{{ voucher_no or '' }}" required />
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-6">
+          <label for="name" class="form-label">Name (Paid To) *</label>
+          <input type="text" name="name" id="name" class="form-control" list="names-list" oninput="capitalizeName(this)" placeholder="Person or Vendor name" value="{{ name or '' }}" required />
+          <datalist id="names-list"></datalist>
+        </div>
+        <div class="col-md-6">
+          <label for="phone" class="form-label">Mobile Number</label>
+          <input type="tel" name="phone" id="phone" class="form-control" pattern="[0-9]{10}" maxlength="10" placeholder="Optional 10 digit number" value="{{ phone or '' }}" />
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <label for="mad_category_id" class="form-label">Mad (Fund Source) *</label>
+          <select name="mad_category_id" id="mad_category_id" class="form-select" onchange="fetchMadBalance()" required>
+            <option value="">Select Mad</option>
+            {% for category in mad_categories %}
+            <option value="{{ category.id }}" {% if mad_category_id|string == category.id|string %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+          </select>
+          <div id="mad-balance-display" class="form-text text-success fw-bold mt-1" style="min-height: 1.5em;"></div>
+        </div>
+        <div class="col-md-4">
+          <label for="expense_category_id" class="form-label">Expense Category *</label>
+          <select name="expense_category_id" id="expense_category_id" class="form-select" required>
+            <option value="">Select Category</option>
+            {% for category in expense_categories %}
+            <option value="{{ category.id }}" {% if expense_category_id|string == category.id|string %}selected{% endif %}>{{ category.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label for="payment_mode_id" class="form-label">Payment Mode *</label>
+          <select name="payment_mode_id" id="payment_mode_id" class="form-select" required>
+            <option value="">Select Mode</option>
+            {% for mode in payment_modes %}
+            <option value="{{ mode.id }}" {% if payment_mode_id|string == mode.id|string %}selected{% endif %}>{{ mode.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4">
+          <label for="amount" class="form-label">Amount *</label>
+          <div class="input-group">
+            <span class="input-group-text bg-light border-end-0">₹</span>
+            <input type="number" name="amount" id="amount" class="form-control border-start-0 text-end" step="0.01" min="0" oninput="formatAmountDisplay()" placeholder="0.00" value="{{ amount or '' }}" required />
+          </div>
+          <div id="amount-formatted" class="form-text text-primary mt-2 text-end" style="min-height: 1.5em;"></div>
+        </div>
+        <div class="col-md-4">
+          <label for="referred_by" class="form-label">Referred By</label>
+          <input type="text" name="referred_by" id="referred_by" class="form-control" list="names-list" oninput="capitalizeName(this)" placeholder="" value="{{ referred_by or '' }}" />
+        </div>
+        <div class="col-md-8">
+          <label for="notes" class="form-label">Notes *</label>
+          <textarea name="notes" id="notes" class="form-control" rows="2" placeholder="Description or breakdown" required>{{ notes or '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="d-flex gap-3 mt-4">
+        <button type="submit" class="btn btn-primary px-5">Save Voucher</button>
+        <a href="/expenses" class="btn btn-outline-secondary px-5">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  if (!document.getElementById("date").value) {
+    document.getElementById("date").valueAsDate = new Date();
+  }
+
+  fetch('/api/names/vouchers')
+    .then(response => response.json())
+    .then(names => {
+      const list = document.getElementById('names-list');
+      names.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        list.appendChild(option);
+      });
+    });
+
+  function capitalizeName(input) {
+    const words = input.value.split(' ');
+    const capitalizedWords = words.map(word => word.charAt(0).toUpperCase() + word.slice(1));
+    input.value = capitalizedWords.join(' ');
+  }
+
+  function fetchMadBalance() {
+    const madId = document.getElementById('mad_category_id').value;
+    const display = document.getElementById('mad-balance-display');
+    
+    if (!madId) {
+      display.innerText = '';
+      return;
+    }
+    
+    display.innerText = 'Fetching balance...';
+    display.className = 'form-text text-muted fw-bold mt-1';
+    
+    fetch(`/api/mad-balance/${madId}`)
+      .then(response => response.json())
+      .then(data => {
+        display.innerText = 'Remaining Balance: ' + data.formatted_balance;
+        display.className = 'form-text text-success fw-bold mt-1';
+        
+        // Optional: warn if balance is low or negative
+        if (data.balance < 0) {
+          display.className = 'form-text text-danger fw-bold mt-1';
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching balance:', err);
+        display.innerText = 'Error fetching balance';
+        display.className = 'form-text text-danger fw-bold mt-1';
+      });
+  }
+
+  function formatAmountDisplay() {
+    const val = document.getElementById('amount').value;
+    const preview = document.getElementById('amount-formatted');
+    if (!val) {
+      preview.innerText = '';
+      return;
+    }
+    const amount = parseFloat(val);
+    const formatted = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(amount);
+    preview.innerText = formatted;
+  }
+</script>
+{% endblock %}

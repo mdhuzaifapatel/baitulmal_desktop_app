@@ -34,10 +34,17 @@
             <td>{{ entry.date.strftime('%d-%m-%Y') }}</td>
             <td><span class="badge bg-danger">{{ entry.from_payment_mode.name }}</span></td>
             <td><span class="badge bg-success">{{ entry.to_payment_mode.name }}</span></td>
-            <td class="text-end fw-bold">₹{{ entry.amount | indian_currency }}</td>
+            <td class="text-end fw-bold">{{ entry.amount | indian_currency }}</td>
             <td class="text-muted small">{{ entry.notes or '-' }}</td>
             <td>
-              <a href="/delete-contra/{{ entry.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this entry?')">Delete</a>
+              <div class="btn-group">
+                <a href="/edit-contra/{{ entry.id }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <a href="/delete-contra/{{ entry.id }}" class="btn btn-sm btn-outline-danger" title="Delete">
+                  <i class="bi bi-trash"></i>
+                </a>
+              </div>
             </td>
           </tr>
           {% endfor %}
@@ -86,8 +93,9 @@
             <label class="form-label">Amount</label>
             <div class="input-group">
               <span class="input-group-text">₹</span>
-              <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required>
+              <input type="number" step="0.01" name="amount" id="amount" class="form-control" placeholder="0.00" oninput="formatAmountDisplay()" required>
             </div>
+            <div id="amount-formatted" class="form-text text-primary fw-bold"></div>
           </div>
           <div class="mb-3">
             <label class="form-label">Notes</label>
@@ -102,4 +110,21 @@
     </div>
   </div>
 </div>
+
+<script>
+  function formatAmountDisplay() {
+    const val = document.getElementById('amount').value;
+    if (!val) {
+      document.getElementById('amount-formatted').innerText = '';
+      return;
+    }
+    const amount = parseFloat(val);
+    const formatted = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 2
+    }).format(amount);
+    document.getElementById('amount-formatted').innerText = formatted;
+  }
+</script>
 {% endblock %}

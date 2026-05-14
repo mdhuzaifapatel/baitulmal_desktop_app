@@ -148,15 +148,49 @@
         border-color: var(--primary-color);
         box-shadow: 0 0 0 0.25rem rgba(15, 118, 110, 0.25);
       }
+
+      /* Navbar Alignment & Responsiveness */
+      .navbar-nav .nav-link {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.4rem;
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+      }
+
+      @media (max-width: 1199.98px) {
+        .navbar-brand span {
+          font-size: 0.9rem;
+        }
+        .navbar-nav .nav-link {
+          font-size: 0.85rem;
+          padding-left: 0.4rem !important;
+          padding-right: 0.4rem !important;
+        }
+      }
+
+      @media (max-width: 991.98px) {
+        .navbar-brand img {
+          height: 50px !important;
+        }
+        .navbar-nav .nav-link {
+          padding: 0.75rem 1rem !important;
+        }
+      }
     </style>
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
       <div class="container">
-        <a class="navbar-brand" href="/">
+        <a class="navbar-brand d-flex align-items-center" href="/">
           <img src="/static/logo.png" alt="Logo" height="70" class="me-2" />
-          Hazrat Sher-E-Sawar (RH) Baitulmal Trust®
+          <div class="d-flex flex-column lh-1">
+            <span class="d-none d-sm-inline fw-bold">Hazrat Sher-E-Sawar (RH)</span>
+            <span class="d-none d-sm-inline small">Baitulmal Trust®</span>
+            <span class="d-inline d-sm-none">Baitulmal Trust®</span>
+          </div>
         </a>
+        
 
         <button
           class="navbar-toggler"
@@ -176,7 +210,7 @@
             </li>
             <li class="nav-item">
               <a class="nav-link" href="/receipts">
-                <i class="bi bi-receipt"></i> All Receipts
+                <i class="bi bi-receipt"></i> Receipts
               </a>
             </li>
             <li class="nav-item">
@@ -199,26 +233,13 @@
                 <i class="bi bi-file-earmark-text"></i> Reports
               </a>
               <ul class="dropdown-menu shadow-sm">
-                <li>
-                  <a class="dropdown-item" href="/mad-report">
-                    <i class="bi bi-pie-chart"></i> Mad Report
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="/register-report">
-                    <i class="bi bi-bar-chart"></i> Register Report
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item" href="/payment-report">
-                    <i class="bi bi-credit-card"></i> Payment mode Report
-                  </a>
-                </li>
+                <li><a class="dropdown-item" href="/mad-report"><i class="bi bi-pie-chart"></i> Mad Report</a></li>
+                <li><a class="dropdown-item" href="/register-report"><i class="bi bi-bar-chart"></i> Register Report</a></li>
+                <li><a class="dropdown-item" href="/payment-report"><i class="bi bi-credit-card"></i> Payment mode Report</a></li>
+                <li><a class="dropdown-item" href="/expense-category-report"><i class="bi bi-file-earmark-bar-graph"></i> Expense Category Report</a></li>
               </ul>
             </li>
-          </ul>
-
-          <ul class="navbar-nav">
+            
             <li class="nav-item dropdown">
               <a
                 class="nav-link dropdown-toggle"
@@ -226,9 +247,15 @@
                 role="button"
                 data-bs-toggle="dropdown"
               >
-                <i class="bi bi-person-circle"></i> Admin
+                <i class="bi bi-gear"></i> Settings
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
+                <li>
+                  <a class="dropdown-item" href="/settings/opening-balances">
+                    <i class="bi  bi-bank"></i> First-Time Balances
+                  </a>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
                 <li>
                   <a class="dropdown-item" href="#" onclick="backupDatabase()">
                     <i class="bi bi-cloud-download"></i> Backup Database
@@ -280,6 +307,7 @@
           <div class="modal-body">
             <input type="hidden" id="download_report_url">
             <input type="hidden" id="download_search_query">
+            <input type="hidden" id="download_extra_params">
             
             <div class="mb-3">
               <label class="form-label">Date Range</label>
@@ -350,9 +378,10 @@
     <script>
       document.getElementById('current-year').textContent = new Date().getFullYear();
 
-      function openDownloadModal(url, searchQuery = '') {
+      function openDownloadModal(url, searchQuery = '', extraParams = {}) {
         document.getElementById('download_report_url').value = url;
         document.getElementById('download_search_query').value = searchQuery;
+        document.getElementById('download_extra_params').value = JSON.stringify(extraParams);
         var downloadModal = new bootstrap.Modal(document.getElementById('downloadModal'));
         downloadModal.show();
       }
@@ -421,6 +450,16 @@
         
         if (search) {
           finalUrl += `&search=${encodeURIComponent(search)}`;
+        }
+        
+        const extraParamsStr = document.getElementById('download_extra_params').value;
+        if (extraParamsStr) {
+          const extraParams = JSON.parse(extraParamsStr);
+          for (const key in extraParams) {
+            if (extraParams[key]) {
+              finalUrl += `&${key}=${extraParams[key]}`;
+            }
+          }
         }
         
         var modalEl = document.getElementById('downloadModal');
