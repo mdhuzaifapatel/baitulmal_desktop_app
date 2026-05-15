@@ -13,8 +13,13 @@ from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import tkinter as tk
-from tkinter import filedialog
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
+
 import sys
 
 def resource_path(relative_path):
@@ -27,6 +32,8 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def prompt_save_path(title, default_name, file_types):
+    if not HAS_TKINTER:
+        return None
     try:
         root = tk.Tk()
         root.attributes("-topmost", True)
@@ -42,6 +49,8 @@ def prompt_save_path(title, default_name, file_types):
         return None
 
 def prompt_open_path(title, file_types):
+    if not HAS_TKINTER:
+        return None
     try:
         root = tk.Tk()
         root.attributes("-topmost", True)

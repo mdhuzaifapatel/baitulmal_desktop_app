@@ -49,7 +49,7 @@ def migrate():
     # Adjust names based on your models.py
     tables = [
         "payment_modes", 
-        "mads", 
+        "mad_categories", 
         "registers", 
         "expense_categories",
         "receipts",
