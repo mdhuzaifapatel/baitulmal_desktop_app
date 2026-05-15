@@ -9,12 +9,17 @@ import database
 #    Example: set DATABASE_URL=postgresql://postgres:password@db.host.supabase.co:5432/postgres
 # 2. Run this script: python migrate_data.py
 
+import sys
+
 LOCAL_DB_URL = "sqlite:///./baitulmal.db"
-REMOTE_DB_URL = os.getenv("DATABASE_URL")
+# Check command line args first, then env variables
+REMOTE_DB_URL = sys.argv[1] if len(sys.argv) > 1 else os.getenv("DATABASE_URL")
 
 if not REMOTE_DB_URL or REMOTE_DB_URL.startswith("sqlite"):
-    print("ERROR: Please set the DATABASE_URL environment variable to your Supabase URL.")
-    print("Example (Windows): set DATABASE_URL=postgresql://user:pass@host:5432/postgres")
+    print("ERROR: Please provide your Supabase URL.")
+    print("Option 1 (Direct): python migrate_data.py \"postgresql://user:pass@host:5432/postgres\"")
+    print("Option 2 (PowerShell): $env:DATABASE_URL=\"url\"; python migrate_data.py")
+    print("Option 3 (CMD): set DATABASE_URL=url && python migrate_data.py")
     exit(1)
 
 # Fix for common postgres scheme issue
@@ -59,6 +64,9 @@ def migrate():
                 
             print(f"Migrating table: {table_name}...")
             table = metadata.tables[table_name]
+            
+            # Clear remote table first to avoid IntegrityError (Primary Key conflicts)
+            remote_session.execute(table.delete())
             
             # Fetch all data from local
             rows = local_session.execute(table.select()).fetchall()
