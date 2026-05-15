@@ -13,13 +13,8 @@ from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-try:
-    import tkinter as tk
-    from tkinter import filedialog
-    HAS_TKINTER = True
-except ImportError:
-    HAS_TKINTER = False
-
+import tkinter as tk
+from tkinter import filedialog
 import sys
 
 def resource_path(relative_path):
@@ -32,8 +27,6 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def prompt_save_path(title, default_name, file_types):
-    if not HAS_TKINTER:
-        return None
     try:
         root = tk.Tk()
         root.attributes("-topmost", True)
@@ -49,8 +42,6 @@ def prompt_save_path(title, default_name, file_types):
         return None
 
 def prompt_open_path(title, file_types):
-    if not HAS_TKINTER:
-        return None
     try:
         root = tk.Tk()
         root.attributes("-topmost", True)
@@ -129,20 +120,25 @@ def get_date_range_for_filter(filter_type: str, start_date_str: str = None, end_
 def get_available_financial_years(db: Session):
     """
     Get list of financial years that either have receipts or is the current FY.
-    Works on both SQLite and PostgreSQL.
     """
+    from sqlalchemy import text
     current_fy = get_current_financial_year()
     
-    # Get distinct years and months from receipts
-    # This is more robust than raw SQL strftime which differs between SQLite/Postgres
-    dates = db.query(Receipt.date).distinct().all()
+    # SQL to get distinct FYs from receipts in SQLite
+    sql = text("""
+        SELECT DISTINCT 
+            CASE WHEN CAST(strftime('%m', date) AS INTEGER) >= 4 
+                 THEN CAST(strftime('%Y', date) AS INTEGER) 
+                 ELSE CAST(strftime('%Y', date) AS INTEGER) - 1 
+            END as fy 
+        FROM receipts
+    """)
     
+    results = db.execute(sql).fetchall()
     fys = {current_fy}
-    for (d,) in dates:
-        if d:
-            # FY = Year if Month >= 4, else Year - 1
-            fy = d.year if d.month >= 4 else d.year - 1
-            fys.add(fy)
+    for row in results:
+        if row[0] is not None:
+            fys.add(int(row[0]))
             
     return sorted(list(fys))
 

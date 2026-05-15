@@ -15,5 +15,3 @@ openpyxl
 google-api-python-client
 google-auth
 google_auth_oauthlib
-psycopg2-binary
-itsdangerous
