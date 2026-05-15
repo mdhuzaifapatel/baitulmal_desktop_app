@@ -129,25 +129,20 @@ def get_date_range_for_filter(filter_type: str, start_date_str: str = None, end_
 def get_available_financial_years(db: Session):
     """
     Get list of financial years that either have receipts or is the current FY.
+    Works on both SQLite and PostgreSQL.
     """
-    from sqlalchemy import text
     current_fy = get_current_financial_year()
     
-    # SQL to get distinct FYs from receipts in SQLite
-    sql = text("""
-        SELECT DISTINCT 
-            CASE WHEN CAST(strftime('%m', date) AS INTEGER) >= 4 
-                 THEN CAST(strftime('%Y', date) AS INTEGER) 
-                 ELSE CAST(strftime('%Y', date) AS INTEGER) - 1 
-            END as fy 
-        FROM receipts
-    """)
+    # Get distinct years and months from receipts
+    # This is more robust than raw SQL strftime which differs between SQLite/Postgres
+    dates = db.query(Receipt.date).distinct().all()
     
-    results = db.execute(sql).fetchall()
     fys = {current_fy}
-    for row in results:
-        if row[0] is not None:
-            fys.add(int(row[0]))
+    for (d,) in dates:
+        if d:
+            # FY = Year if Month >= 4, else Year - 1
+            fy = d.year if d.month >= 4 else d.year - 1
+            fys.add(fy)
             
     return sorted(list(fys))
 
