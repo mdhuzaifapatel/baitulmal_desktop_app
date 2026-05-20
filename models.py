@@ -105,3 +105,30 @@ class Expense(Base):
 
     def __repr__(self):
         return f"<Expense(voucher='{self.voucher_no}', amount={self.amount})>"
+
+class MadInitialBalance(Base):
+    __tablename__ = "mad_initial_balances"
+
+    id = Column(Integer, primary_key=True)
+    mad_category_id = Column(Integer, ForeignKey("mad_categories.id"), nullable=False)
+    payment_mode_id = Column(Integer, ForeignKey("payment_modes.id"), nullable=False)
+    amount = Column(Float, default=0.0)
+
+    # Relationships
+    mad_category = relationship("MadCategory")
+    payment_mode = relationship("PaymentMode")
+
+    def __repr__(self):
+        return f"<MadInitialBalance(mad_id={self.mad_category_id}, payment_id={self.payment_mode_id}, amount={self.amount})>"
+
+class Person(Base):
+    __tablename__ = "people"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    phone = Column(String)
+    address = Column(String)
+    person_type = Column(String, nullable=False) # 'Donor', 'Beneficiary', 'Staff'
+
+    def __repr__(self):
+        return f"<Person(name='{self.name}', type='{self.person_type}')>"

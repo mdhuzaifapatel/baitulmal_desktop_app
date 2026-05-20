@@ -10,6 +10,13 @@ import os
 from jinja2 import Environment, FileSystemLoader
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, PageBreak
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -73,6 +80,42 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 # Direct Jinja2 environment
 env = Environment(loader=FileSystemLoader(resource_path("templates")), autoescape=True)
 
+# -----------------------------------------------------------------------
+# Expense Category Classification Map
+# Maps every known expense category name to one of three classes:
+#   'charity'   – Direct welfare / charitable aid to beneficiaries
+#   'asset'     – Capital expenditure / fixed asset additions
+#   'admin'     – Administrative / operational NGO overhead
+# -----------------------------------------------------------------------
+EXPENSE_CLASSIFICATION = {
+    # Direct Charity & Welfare
+    "ambulance service":         "charity",
+    "imdad to needy":            "charity",
+    "mass marriages":            "charity",
+    "monthly pension for needy": "charity",
+    "ration kit":                "charity",
+    "staff welfare expenses":    "charity",
+    # Capital / Fixed Assets
+    "fixed assets":              "asset",
+    # Administrative / Operational Overhead
+    "advertisement expenses":    "admin",
+    "bank charges":              "admin",
+    "fuel expenses":             "admin",
+    "general expenditure":       "admin",
+    "miscellaneous":             "admin",
+    "printing and stationary":   "admin",
+    "repair and maintenance":    "admin",
+    "staff salary":              "admin",
+    "travel expenses":           "admin",
+    "vehicle service":           "admin",
+    "wages":                     "admin",
+}
+
+def classify_expense(name: str) -> str:
+    """Return the classification for a category name (case-insensitive)."""
+    return EXPENSE_CLASSIFICATION.get(name.strip().lower(), "charity")  # default: charity
+
+
 def get_financial_year_range(fy_year: int):
     """
     Get the date range for a given financial year.
@@ -95,7 +138,12 @@ def get_current_financial_year():
     else:
         return today.year - 1
 
-def get_date_range_for_filter(filter_type: str, start_date_str: str = None, end_date_str: str = None, fy: int = None):
+def get_date_range_for_filter(filter_type: str, start_date_str: str = None, end_date_str: str = None, fy: str = None):
+    if fy is not None:
+        try:
+            fy = int(str(fy).split('?')[0].split('&')[0])
+        except ValueError:
+            fy = None
     if filter_type == "current_month":
         today = date.today()
         actual_start_date = date(today.year, today.month, 1)
@@ -231,11 +279,8 @@ def require_auth(request: Request):
 def get_receipt_names():
     db = SessionLocal()
     try:
-        # Get names from receipts and referred_by from receipts
-        names = db.query(Receipt.name).distinct().all()
-        refs = db.query(Receipt.referred_by).filter(Receipt.referred_by != None).distinct().all()
-        all_names = set([n[0] for n in names] + [r[0] for r in refs if r[0]])
-        return sorted(list(all_names))
+        people = db.query(Person).filter(Person.person_type.in_(['Donor', 'Trust Member'])).all()
+        return [{"name": p.name, "phone": p.phone or "", "address": p.address or ""} for p in people]
     finally:
         db.close()
 
@@ -243,11 +288,8 @@ def get_receipt_names():
 def get_voucher_names():
     db = SessionLocal()
     try:
-        # Get names from expenses and referred_by from expenses
-        names = db.query(Expense.name).distinct().all()
-        refs = db.query(Expense.referred_by).filter(Expense.referred_by != None).distinct().all()
-        all_names = set([n[0] for n in names] + [r[0] for r in refs if r[0]])
-        return sorted(list(all_names))
+        people = db.query(Person).filter(Person.person_type.in_(['Beneficiary', 'Staff', 'Trust Member'])).all()
+        return [{"name": p.name, "phone": p.phone or "", "address": p.address or ""} for p in people]
     finally:
         db.close()
 
@@ -255,10 +297,8 @@ def get_voucher_names():
 def get_unique_names():
     db = SessionLocal()
     try:
-        receipt_names = db.query(Receipt.name).distinct().all()
-        expense_names = db.query(Expense.name).distinct().all()
-        all_names = set([n[0] for n in receipt_names] + [n[0] for n in expense_names])
-        return sorted(list(all_names))
+        people = db.query(Person).all()
+        return [{"name": p.name, "phone": p.phone or "", "address": p.address or ""} for p in people]
     finally:
         db.close()
 
@@ -275,6 +315,28 @@ def get_mad_balance(mad_id: int):
         expenses_total = db.query(func.sum(Expense.amount)).filter(Expense.mad_category_id == mad_id).scalar() or 0
         
         current_balance = mad.initial_balance + receipts_total - expenses_total
+        return {
+            "balance": current_balance,
+            "formatted_balance": env.filters['indian_currency'](current_balance)
+        }
+    finally:
+        db.close()
+
+@app.get("/api/payment-balance/{payment_id}")
+def get_payment_balance(payment_id: int):
+    db = SessionLocal()
+    try:
+        payment = db.query(PaymentMode).filter(PaymentMode.id == payment_id).first()
+        if not payment:
+            return {"balance": 0.0, "formatted_balance": env.filters['indian_currency'](0.0)}
+        
+        # Calculate current balance
+        receipts_total = db.query(func.sum(Receipt.amount)).filter(Receipt.payment_mode_id == payment_id).scalar() or 0
+        expenses_total = db.query(func.sum(Expense.amount)).filter(Expense.payment_mode_id == payment_id).scalar() or 0
+        contra_in = db.query(func.sum(ContraEntry.amount)).filter(ContraEntry.to_payment_mode_id == payment_id).scalar() or 0
+        contra_out = db.query(func.sum(ContraEntry.amount)).filter(ContraEntry.from_payment_mode_id == payment_id).scalar() or 0
+        
+        current_balance = payment.initial_balance + receipts_total - expenses_total + contra_in - contra_out
         return {
             "balance": current_balance,
             "formatted_balance": env.filters['indian_currency'](current_balance)
@@ -405,6 +467,90 @@ def migrate_db():
             db.commit()
         except Exception:
             db.rollback()
+            
+        # Check and add address to people
+        try:
+            db.execute(text("ALTER TABLE people ADD COLUMN address VARCHAR"))
+            db.commit()
+        except Exception:
+            db.rollback()
+    finally:
+        db.close()
+
+def migrate_people():
+    db = SessionLocal()
+    try:
+        # Migrate Donors — only create if no profile of ANY type exists with this name
+        receipts = db.query(Receipt.name, Receipt.phone, Receipt.address).all()
+        for r_name, r_phone, r_address in receipts:
+            if r_name:
+                # First check: does a Donor profile exist?
+                donor_person = db.query(Person).filter(func.lower(Person.name) == r_name.lower(), Person.person_type == 'Donor').first()
+                if donor_person:
+                    # Update missing fields on existing donor
+                    if r_address and not donor_person.address:
+                        donor_person.address = r_address
+                    if r_phone and not donor_person.phone:
+                        donor_person.phone = r_phone
+                else:
+                    # Check if ANY profile exists (e.g. Trust Member)
+                    any_person = db.query(Person).filter(func.lower(Person.name) == r_name.lower()).first()
+                    if not any_person:
+                        db.add(Person(name=r_name, phone=r_phone or "", address=r_address or "", person_type='Donor'))
+                    else:
+                        # Person exists under a different type (e.g. Trust Member) — just update missing fields
+                        if r_address and not any_person.address:
+                            any_person.address = r_address
+                        if r_phone and not any_person.phone:
+                            any_person.phone = r_phone
+
+        # Migrate Beneficiaries — only create if no profile of ANY type exists with this name
+        expenses = db.query(Expense.name, Expense.phone).all()
+        for e_name, e_phone in expenses:
+            if e_name:
+                # Check if Beneficiary/Staff profile exists
+                ben_person = db.query(Person).filter(func.lower(Person.name) == e_name.lower(), Person.person_type.in_(['Beneficiary', 'Staff'])).first()
+                if ben_person:
+                    if e_phone and not ben_person.phone:
+                        ben_person.phone = e_phone
+                else:
+                    # Check if ANY profile exists (e.g. Trust Member or Donor)
+                    any_person = db.query(Person).filter(func.lower(Person.name) == e_name.lower()).first()
+                    if not any_person:
+                        db.add(Person(name=e_name, phone=e_phone or "", person_type='Beneficiary'))
+                    else:
+                        # Person exists under a different type — just update missing phone
+                        if e_phone and not any_person.phone:
+                            any_person.phone = e_phone
+
+        db.commit()
+    except Exception as e:
+        print(f"Error migrating people: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def deduplicate_people():
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func
+        # Find duplicates by lower(name), phone, person_type
+        all_people = db.query(Person).all()
+        seen = {}
+        for p in all_people:
+            key = (p.name.lower().strip(), p.phone.strip() if p.phone else "", p.person_type)
+            if key in seen:
+                # Keep the first one, but if this one has an address and the first one doesn't, copy it
+                first_p = seen[key]
+                if p.address and not first_p.address:
+                    first_p.address = p.address
+                db.delete(p)
+            else:
+                seen[key] = p
+        db.commit()
+    except Exception as e:
+        print(f"Error deduplicating people: {e}")
+        db.rollback()
     finally:
         db.close()
 
@@ -414,6 +560,10 @@ def startup():
     migrate_db()
     # Seed data on startup
     seed_data()
+    # Migrate people from existing records
+    migrate_people()
+    # Deduplicate in case of repeated profiles
+    deduplicate_people()
 
 @app.get("/login")
 def login_page(request: Request):
@@ -622,6 +772,13 @@ def add_receipt(
         )
         
         db.add(receipt)
+        
+        # Check if person exists as Donor or Trust Member, if not create
+        existing_person = db.query(Person).filter(func.lower(Person.name) == name.lower(), Person.person_type.in_(['Donor', 'Trust Member'])).first()
+        if not existing_person:
+            new_person = Person(name=name, phone=phone, address=address, person_type='Donor')
+            db.add(new_person)
+            
         db.commit()
         
         return RedirectResponse(url="/", status_code=303)
@@ -1130,7 +1287,7 @@ def mad_report_page(request: Request, fy: int = None):
             opening_expenses = db.query(func.sum(Expense.amount)).filter(
                 and_(Expense.mad_category_id == cat.id, Expense.date < start_date)
             ).scalar() or 0
-            cat_opening = opening_receipts - opening_expenses
+            cat_opening = cat.initial_balance + opening_receipts - opening_expenses
             
             # Receipts in this period
             period_receipts = db.query(func.sum(Receipt.amount)).filter(
@@ -1163,11 +1320,9 @@ def mad_report_page(request: Request, fy: int = None):
         # Sort by closing balance descending
         mad_report_details = sorted(mad_report_details, key=lambda x: x["closing"], reverse=True)
         
-        total_opening = db.query(func.sum(Receipt.amount)).filter(Receipt.date < start_date).scalar() or 0
-        total_period = db.query(func.sum(Receipt.amount)).filter(
-            and_(Receipt.date >= start_date, Receipt.date <= end_date)
-        ).scalar() or 0
-        total_closing = total_opening + total_period
+        total_opening = sum(item["opening"] for item in mad_report_details)
+        total_period = sum(item["period_in"] for item in mad_report_details)
+        total_closing = sum(item["closing"] for item in mad_report_details)
         
         years = get_available_financial_years(db)
         
@@ -1206,7 +1361,7 @@ def download_mad_report_excel(request: Request, filter_type: str = "current_fy",
             opening_e = db.query(func.sum(Expense.amount)).filter(
                 and_(Expense.mad_category_id == cat.id, Expense.date < actual_start_date)
             ).scalar() or 0
-            opening = opening_r - opening_e
+            opening = cat.initial_balance + opening_r - opening_e
             
             period_in = db.query(func.sum(Receipt.amount)).filter(
                 and_(Receipt.mad_category_id == cat.id, Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
@@ -2112,6 +2267,545 @@ def download_payment_report_excel(request: Request, filter_type: str = "current_
     finally:
         db.close()
 
+@app.get("/audit-report")
+def audit_report_page(request: Request, fy: str = None, start_date: str = None, end_date: str = None, filter_type: str = "current_fy"):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    
+    db = get_db()
+    try:
+        actual_start_date, actual_end_date, title_suffix = get_date_range_for_filter(filter_type, start_date, end_date, fy)
+        
+        # 1. Calculate Balances for Payment Modes
+        payment_modes = db.query(PaymentMode).all()
+        payment_data = []
+        
+        for mode in payment_modes:
+            opening_r = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.payment_mode_id == mode.id, Receipt.date < actual_start_date)
+            ).scalar() or 0
+            opening_e = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.payment_mode_id == mode.id, Expense.date < actual_start_date)
+            ).scalar() or 0
+            opening_cin = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.to_payment_mode_id == mode.id, ContraEntry.date < actual_start_date)
+            ).scalar() or 0
+            opening_cout = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.from_payment_mode_id == mode.id, ContraEntry.date < actual_start_date)
+            ).scalar() or 0
+            opening = mode.initial_balance + opening_r - opening_e + opening_cin - opening_cout
+            
+            period_in = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.payment_mode_id == mode.id, Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+            ).scalar() or 0
+            period_out = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.payment_mode_id == mode.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            contra_in = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.to_payment_mode_id == mode.id, ContraEntry.date >= actual_start_date, ContraEntry.date <= actual_end_date)
+            ).scalar() or 0
+            contra_out = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.from_payment_mode_id == mode.id, ContraEntry.date >= actual_start_date, ContraEntry.date <= actual_end_date)
+            ).scalar() or 0
+            
+            closing = opening + period_in - period_out + contra_in - contra_out
+            
+            payment_data.append({
+                "id": mode.id,
+                "name": mode.name,
+                "opening": opening,
+                "receipts": period_in,
+                "expenses": period_out,
+                "contra_in": contra_in,
+                "contra_out": contra_out,
+                "closing": closing
+            })
+            
+        # 2. Calculate Balances for MAD Categories
+        categories = db.query(MadCategory).all()
+        mad_data = []
+        for cat in categories:
+            opening_r = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.mad_category_id == cat.id, Receipt.date < actual_start_date)
+            ).scalar() or 0
+            opening_e = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.mad_category_id == cat.id, Expense.date < actual_start_date)
+            ).scalar() or 0
+            opening = cat.initial_balance + opening_r - opening_e
+            
+            period_in = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.mad_category_id == cat.id, Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+            ).scalar() or 0
+            period_out = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.mad_category_id == cat.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            closing = opening + period_in - period_out
+            
+            mad_data.append({
+                "id": cat.id,
+                "name": cat.name,
+                "opening": opening,
+                "period_in": period_in,
+                "period_out": period_out,
+                "closing": closing
+            })
+            
+        # 3. Calculate Expense Categories Breakdown
+        expense_cats = db.query(ExpenseCategory).all()
+        expense_data = []
+        total_revenue_expenses = 0
+        for ec in expense_cats:
+            spent = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.expense_category_id == ec.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            count = db.query(func.count(Expense.id)).filter(
+                and_(Expense.expense_category_id == ec.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            
+            if spent > 0 or count > 0:
+                expense_data.append({
+                    "id": ec.id,
+                    "name": ec.name,
+                    "amount": spent,
+                    "count": count,
+                    "classification": classify_expense(ec.name)
+                })
+                total_revenue_expenses += spent
+                
+        expense_data.sort(key=lambda x: x["amount"], reverse=True)
+        
+        # 4. Fixed Assets Details (Capital Outlay)
+        fixed_assets_cat = db.query(ExpenseCategory).filter(ExpenseCategory.name.ilike('%fixed asset%')).first()
+        fixed_assets_list = []
+        total_fixed_assets_amount = 0
+        if fixed_assets_cat:
+            assets = db.query(Expense).filter(
+                and_(Expense.expense_category_id == fixed_assets_cat.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).order_by(Expense.date).all()
+            for asset in assets:
+                fixed_assets_list.append({
+                    "id": asset.id,
+                    "date": asset.date.strftime('%Y-%m-%d'),
+                    "voucher_no": asset.voucher_no,
+                    "name": asset.name,
+                    "description": asset.notes or "Fixed asset acquisition",
+                    "amount": asset.amount
+                })
+                total_fixed_assets_amount += asset.amount
+
+        # 5. Calculate Compliance Indicators
+        # A. Administrative Overhead Ratio (using central classification map)
+        total_admin_expenses = sum(item["amount"] for item in expense_data if item["classification"] == "admin")
+        total_charity_expenses = sum(item["amount"] for item in expense_data if item["classification"] == "charity")
+        total_asset_expenses = sum(item["amount"] for item in expense_data if item["classification"] == "asset")
+        admin_ratio = (total_admin_expenses / total_revenue_expenses * 100) if total_revenue_expenses > 0 else 0
+        
+        # B. Cash vs Bank Ratio
+        total_closing_payment_modes = sum(mode["closing"] for mode in payment_data)
+        total_cash_closing = sum(mode["closing"] for mode in payment_data if "cash" in mode["name"].lower())
+        total_bank_closing = total_closing_payment_modes - total_cash_closing
+        cash_ratio = (total_cash_closing / total_closing_payment_modes * 100) if total_closing_payment_modes > 0 else 0
+        bank_ratio = (total_bank_closing / total_closing_payment_modes * 100) if total_closing_payment_modes > 0 else 0
+        
+        # C. Audit Trail Completeness (Missing Phone numbers)
+        total_receipts_count = db.query(func.count(Receipt.id)).filter(
+            and_(Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+        ).scalar() or 0
+        receipts_missing_phone = db.query(func.count(Receipt.id)).filter(
+            and_(Receipt.date >= actual_start_date, Receipt.date <= actual_end_date, (Receipt.phone == '') | (Receipt.phone == None))
+        ).scalar() or 0
+        
+        total_expenses_count = db.query(func.count(Expense.id)).filter(
+            and_(Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+        ).scalar() or 0
+        expenses_missing_phone = db.query(func.count(Expense.id)).filter(
+            and_(Expense.date >= actual_start_date, Expense.date <= actual_end_date, (Expense.phone == '') | (Expense.phone == None))
+        ).scalar() or 0
+        
+        total_tx_count = total_receipts_count + total_expenses_count
+        total_missing_phone = receipts_missing_phone + expenses_missing_phone
+        trail_completeness = ((total_tx_count - total_missing_phone) / total_tx_count * 100) if total_tx_count > 0 else 100.0
+        
+        # D. Reconciliation Check
+        total_mads_closing = sum(mad["closing"] for mad in mad_data)
+        reconciliation_discrepancy = total_closing_payment_modes - total_mads_closing
+        reconciled = abs(reconciliation_discrepancy) < 0.01
+        
+        # E. Summary Totals
+        total_opening = sum(mode["opening"] for mode in payment_data)
+        total_receipts = sum(mode["receipts"] for mode in payment_data)
+        total_expenses = sum(mode["expenses"] for mode in payment_data)
+        
+        years = get_available_financial_years(db)
+        
+        # Sanitize fy for the template
+        display_fy = get_current_financial_year()
+        if fy is not None:
+            try:
+                display_fy = int(str(fy).split('?')[0].split('&')[0])
+            except ValueError:
+                pass
+        
+        template = env.get_template("audit_report.html")
+        return HTMLResponse(content=template.render(
+            request=request,
+            filter_type=filter_type,
+            start_date=actual_start_date.strftime('%Y-%m-%d'),
+            end_date=actual_end_date.strftime('%Y-%m-%d'),
+            current_fy=display_fy,
+            available_years=years,
+            title_suffix=title_suffix,
+            payment_modes=payment_data,
+            mad_categories=mad_data,
+            expense_categories=expense_data,
+            fixed_assets=fixed_assets_list,
+            total_fixed_assets_amount=total_fixed_assets_amount,
+            total_opening=total_opening,
+            total_receipts=total_receipts,
+            total_expenses=total_expenses,
+            total_closing=total_closing_payment_modes,
+            total_mads_closing=total_mads_closing,
+            reconciliation_discrepancy=reconciliation_discrepancy,
+            reconciled=reconciled,
+            total_admin_expenses=total_admin_expenses,
+            total_charity_expenses=total_charity_expenses,
+            total_asset_expenses=total_asset_expenses,
+            admin_ratio=admin_ratio,
+            total_cash_closing=total_cash_closing,
+            total_bank_closing=total_bank_closing,
+            cash_ratio=cash_ratio,
+            bank_ratio=bank_ratio,
+            total_tx_count=total_tx_count,
+            total_missing_phone=total_missing_phone,
+            trail_completeness=trail_completeness,
+            now=datetime.now()
+        ))
+    finally:
+        db.close()
+
+@app.get("/audit-report/download")
+def download_audit_report_excel(request: Request, filter_type: str = "current_fy", start_date: str = None, end_date: str = None, fy: str = None):
+    auth_redirect = require_auth(request)
+    if auth_redirect:
+        return auth_redirect
+    db = get_db()
+    try:
+        actual_start_date, actual_end_date, title_suffix = get_date_range_for_filter(filter_type, start_date, end_date, fy)
+        
+        # 1. Fetch Payment Mode data
+        payment_modes = db.query(PaymentMode).all()
+        payment_data = []
+        for mode in payment_modes:
+            opening_r = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.payment_mode_id == mode.id, Receipt.date < actual_start_date)
+            ).scalar() or 0
+            opening_e = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.payment_mode_id == mode.id, Expense.date < actual_start_date)
+            ).scalar() or 0
+            opening_cin = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.to_payment_mode_id == mode.id, ContraEntry.date < actual_start_date)
+            ).scalar() or 0
+            opening_cout = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.from_payment_mode_id == mode.id, ContraEntry.date < actual_start_date)
+            ).scalar() or 0
+            opening = mode.initial_balance + opening_r - opening_e + opening_cin - opening_cout
+            
+            period_in = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.payment_mode_id == mode.id, Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+            ).scalar() or 0
+            period_out = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.payment_mode_id == mode.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            contra_in = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.to_payment_mode_id == mode.id, ContraEntry.date >= actual_start_date, ContraEntry.date <= actual_end_date)
+            ).scalar() or 0
+            contra_out = db.query(func.sum(ContraEntry.amount)).filter(
+                and_(ContraEntry.from_payment_mode_id == mode.id, ContraEntry.date >= actual_start_date, ContraEntry.date <= actual_end_date)
+            ).scalar() or 0
+            
+            closing = opening + period_in - period_out + contra_in - contra_out
+            payment_data.append({
+                "name": mode.name,
+                "opening": opening,
+                "receipts": period_in,
+                "expenses": period_out,
+                "contra_in": contra_in,
+                "contra_out": contra_out,
+                "closing": closing
+            })
+            
+        # 2. Fetch MAD data
+        categories = db.query(MadCategory).all()
+        mad_data = []
+        for cat in categories:
+            opening_r = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.mad_category_id == cat.id, Receipt.date < actual_start_date)
+            ).scalar() or 0
+            opening_e = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.mad_category_id == cat.id, Expense.date < actual_start_date)
+            ).scalar() or 0
+            opening = cat.initial_balance + opening_r - opening_e
+            
+            period_in = db.query(func.sum(Receipt.amount)).filter(
+                and_(Receipt.mad_category_id == cat.id, Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+            ).scalar() or 0
+            period_out = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.mad_category_id == cat.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            closing = opening + period_in - period_out
+            mad_data.append({
+                "name": cat.name,
+                "opening": opening,
+                "period_in": period_in,
+                "period_out": period_out,
+                "closing": closing
+            })
+            
+        # 3. Fetch Expense breakdown
+        expense_cats = db.query(ExpenseCategory).all()
+        expense_data = []
+        total_revenue_expenses = 0
+        for ec in expense_cats:
+            spent = db.query(func.sum(Expense.amount)).filter(
+                and_(Expense.expense_category_id == ec.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            count = db.query(func.count(Expense.id)).filter(
+                and_(Expense.expense_category_id == ec.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).scalar() or 0
+            if spent > 0 or count > 0:
+                expense_data.append({
+                    "name": ec.name,
+                    "amount": spent,
+                    "count": count,
+                    "classification": classify_expense(ec.name)
+                })
+                total_revenue_expenses += spent
+        expense_data.sort(key=lambda x: x["amount"], reverse=True)
+        
+        # 4. Fetch Fixed Assets details
+        fixed_assets_cat = db.query(ExpenseCategory).filter(ExpenseCategory.name.ilike('%fixed asset%')).first()
+        fixed_assets_list = []
+        total_fixed_assets_amount = 0
+        if fixed_assets_cat:
+            assets = db.query(Expense).filter(
+                and_(Expense.expense_category_id == fixed_assets_cat.id, Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+            ).order_by(Expense.date).all()
+            for asset in assets:
+                fixed_assets_list.append({
+                    "date": asset.date.strftime('%Y-%m-%d'),
+                    "voucher_no": asset.voucher_no,
+                    "name": asset.name,
+                    "description": asset.notes or "Fixed asset acquisition",
+                    "amount": asset.amount
+                })
+                total_fixed_assets_amount += asset.amount
+                
+        # 5. Compliance calculations
+        admin_keywords = ["salary", "rent", "office", "admin", "electric", "telephon", "stationery", "net", "wifi", "maintenance", "bank charges", "repair"]
+        total_admin_expenses = sum(item["amount"] for item in expense_data if any(kw in item["name"].lower() for kw in admin_keywords))
+        admin_ratio = (total_admin_expenses / total_revenue_expenses * 100) if total_revenue_expenses > 0 else 0
+        
+        total_closing_payment_modes = sum(mode["closing"] for mode in payment_data)
+        total_cash_closing = sum(mode["closing"] for mode in payment_data if "cash" in mode["name"].lower())
+        total_bank_closing = total_closing_payment_modes - total_cash_closing
+        cash_ratio = (total_cash_closing / total_closing_payment_modes * 100) if total_closing_payment_modes > 0 else 0
+        bank_ratio = (total_bank_closing / total_closing_payment_modes * 100) if total_closing_payment_modes > 0 else 0
+        
+        total_receipts_count = db.query(func.count(Receipt.id)).filter(
+            and_(Receipt.date >= actual_start_date, Receipt.date <= actual_end_date)
+        ).scalar() or 0
+        receipts_missing_phone = db.query(func.count(Receipt.id)).filter(
+            and_(Receipt.date >= actual_start_date, Receipt.date <= actual_end_date, (Receipt.phone == '') | (Receipt.phone == None))
+        ).scalar() or 0
+        total_expenses_count = db.query(func.count(Expense.id)).filter(
+            and_(Expense.date >= actual_start_date, Expense.date <= actual_end_date)
+        ).scalar() or 0
+        expenses_missing_phone = db.query(func.count(Expense.id)).filter(
+            and_(Expense.date >= actual_start_date, Expense.date <= actual_end_date, (Expense.phone == '') | (Expense.phone == None))
+        ).scalar() or 0
+        total_tx_count = total_receipts_count + total_expenses_count
+        total_missing_phone = receipts_missing_phone + expenses_missing_phone
+        trail_completeness = ((total_tx_count - total_missing_phone) / total_tx_count * 100) if total_tx_count > 0 else 100.0
+        
+        total_mads_closing = sum(mad["closing"] for mad in mad_data)
+        reconciliation_discrepancy = total_closing_payment_modes - total_mads_closing
+        reconciled_status = "Reconciled" if abs(reconciliation_discrepancy) < 0.01 else f"Discrepancy of ₹{reconciliation_discrepancy:.2f}"
+        
+        # Generate Receipts and Payments Data
+        receipts_lines = []
+        payments_lines = []
+        
+        # Receipts - Opening Balance
+        receipts_lines.append(("To OPENING BALANCE:", "", True))
+        
+        cash_opening = sum(m["opening"] for m in payment_data if "cash" in m["name"].lower())
+        receipts_lines.append(("   Cash In Hand", cash_opening, False))
+        
+        bank_modes = [m for m in payment_data if "cash" not in m["name"].lower() and m["opening"] > 0]
+        if bank_modes:
+            receipts_lines.append(("   Cash at Bank's:", "", True))
+            for m in bank_modes:
+                receipts_lines.append((f"      {m['name']}", m["opening"], False))
+                
+        # Receipts - Collections
+        receipts_lines.append(("\" COLLECTION FROM:", "", True))
+        for m in mad_data:
+            if m["period_in"] > 0:
+                receipts_lines.append((f"   {m['name']}", m["period_in"], False))
+                
+        # Payments - Charity
+        charity_exps = [e for e in expense_data if e["classification"] == "charity" and e["amount"] > 0]
+        if charity_exps:
+            payments_lines.append(("By CHARITY PROGRAMMES:", "", True))
+            for e in charity_exps:
+                payments_lines.append((f"   {e['name']}", e["amount"], False))
+                
+        # Payments - Admin
+        admin_exps = [e for e in expense_data if e["classification"] == "admin" and e["amount"] > 0]
+        if admin_exps:
+            payments_lines.append(("\" ADMINISTRATIVE EXPENSES:", "", True))
+            for e in admin_exps:
+                payments_lines.append((f"   {e['name']}", e["amount"], False))
+                
+        # Payments - Asset
+        asset_exps = [e for e in expense_data if e["classification"] == "asset" and e["amount"] > 0]
+        if asset_exps:
+            payments_lines.append(("\" PURCHASES:", "", True))
+            for e in asset_exps:
+                payments_lines.append((f"   {e['name']}", e["amount"], False))
+                
+        # Payments - Closing Balance
+        payments_lines.append(("\" CLOSING BALANCE:", "", True))
+        cash_closing = sum(m["closing"] for m in payment_data if "cash" in m["name"].lower())
+        payments_lines.append(("   Cash In Hand", cash_closing, False))
+        
+        bank_modes_c = [m for m in payment_data if "cash" not in m["name"].lower() and m["closing"] > 0]
+        if bank_modes_c:
+            payments_lines.append(("   Cash at Bank's:", "", True))
+            for m in bank_modes_c:
+                payments_lines.append((f"      {m['name']}", m["closing"], False))
+                
+        # Calculate totals
+        total_receipts = sum(l[1] for l in receipts_lines if isinstance(l[1], (int, float)))
+        total_payments = sum(l[1] for l in payments_lines if isinstance(l[1], (int, float)))
+        
+        # Pad lines
+        max_len = max(len(receipts_lines), len(payments_lines))
+        while len(receipts_lines) < max_len:
+            receipts_lines.append(("", "", False))
+        while len(payments_lines) < max_len:
+            payments_lines.append(("", "", False))
+            
+        # Workbook setup
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Receipts and Payments"
+        
+        # Styles
+        title_font = Font(name="Calibri", size=14, bold=True)
+        subtitle_font = Font(name="Calibri", size=12)
+        header_font = Font(name="Calibri", size=11, bold=True)
+        bold_font = Font(name="Calibri", size=11, bold=True)
+        regular_font = Font(name="Calibri", size=11)
+        
+        thin_border_top_bottom = Border(top=Side(style='thin', color='000000'), bottom=Side(style='thin', color='000000'))
+        double_bottom_border = Border(top=Side(style='thin', color='000000'), bottom=Side(style='double', color='000000'))
+        
+        ws.merge_cells('A1:D1')
+        ws['A1'] = "HAZRATH SHER-E-SAWAR (RH) BAITULMAL TRUST"
+        ws['A1'].font = title_font
+        ws['A1'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells('A2:D2')
+        ws['A2'] = "DARGAH HAZRATH SHER-E-SAWAR (RH), BASAVAKALYAN, DISTRICT: BIDAR"
+        ws['A2'].font = subtitle_font
+        ws['A2'].alignment = Alignment(horizontal='center')
+        
+        ws.merge_cells('A4:D4')
+        ws['A4'] = f"RECEIPTS AND PAYMENTS ACCOUNT FOR THE PERIOD {title_suffix.upper()}"
+        ws['A4'].font = header_font
+        ws['A4'].alignment = Alignment(horizontal='center')
+        
+        # Table Headers
+        headers = [("A5", "RECEIPTS"), ("B5", "AMOUNT"), ("C5", "PAYMENTS"), ("D5", "AMOUNT")]
+        for cell_ref, val in headers:
+            ws[cell_ref] = val
+            ws[cell_ref].font = bold_font
+            ws[cell_ref].border = thin_border_top_bottom
+            if 'B' in cell_ref or 'D' in cell_ref:
+                ws[cell_ref].alignment = Alignment(horizontal='right')
+                
+        # Data Rows
+        current_row = 6
+        for i in range(max_len):
+            r_label, r_amount, r_bold = receipts_lines[i]
+            p_label, p_amount, p_bold = payments_lines[i]
+            
+            cell_r_label = ws.cell(row=current_row, column=1, value=r_label)
+            cell_r_amount = ws.cell(row=current_row, column=2, value=r_amount if r_amount != "" else None)
+            cell_p_label = ws.cell(row=current_row, column=3, value=p_label)
+            cell_p_amount = ws.cell(row=current_row, column=4, value=p_amount if p_amount != "" else None)
+            
+            cell_r_label.font = bold_font if r_bold else regular_font
+            cell_p_label.font = bold_font if p_bold else regular_font
+            cell_r_amount.font = regular_font
+            cell_p_amount.font = regular_font
+            
+            if isinstance(r_amount, (int, float)):
+                cell_r_amount.number_format = '#,##,##0.00'
+            if isinstance(p_amount, (int, float)):
+                cell_p_amount.number_format = '#,##,##0.00'
+                
+            current_row += 1
+            
+        # Totals Row
+        ws.cell(row=current_row, column=1, value="")
+        ws.cell(row=current_row, column=3, value="")
+        
+        c_tr = ws.cell(row=current_row, column=2, value=total_receipts)
+        c_tr.font = bold_font
+        c_tr.border = double_bottom_border
+        c_tr.number_format = '#,##,##0.00'
+        
+        c_tp = ws.cell(row=current_row, column=4, value=total_payments)
+        c_tp.font = bold_font
+        c_tp.border = double_bottom_border
+        c_tp.number_format = '#,##,##0.00'
+        
+        current_row += 2
+        ws.cell(row=current_row, column=1, value="\"SUBJECT TO SEPARATE REPORT OF EVEN DATE\".").font = regular_font
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 35
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 35
+        ws.column_dimensions['D'].width = 20
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_filename = f"Receipts_Payments_Account_{title_suffix.replace(' ', '_')}_{timestamp}.xlsx"
+        
+        filepath = prompt_save_path(
+            "Save Receipts and Payments Account",
+            default_filename,
+            [("Excel files", "*.xlsx"), ("All files", "*.*")]
+        )
+        
+        if filepath:
+            if not filepath.endswith('.xlsx'):
+                filepath += '.xlsx'
+            wb.save(filepath)
+            return {"success": True, "message": "Excel report saved successfully."}
+        return {"success": False, "message": "Save cancelled."}
+        
+    except Exception as e:
+        return {"success": False, "message": f"Error generating Excel report: {str(e)}"}
+    finally:
+        db.close()
+
+
+
+
 @app.get("/contra")
 def contra_page(request: Request, fy: int = None):
     auth_redirect = require_auth(request)
@@ -2348,6 +3042,13 @@ async def add_voucher(
             notes=notes
         )
         db.add(expense)
+        
+        # Check if person exists as Beneficiary or Staff, if not create as Beneficiary
+        existing_person = db.query(Person).filter(func.lower(Person.name) == name.lower(), Person.person_type.in_(['Beneficiary', 'Staff'])).first()
+        if not existing_person:
+            new_person = Person(name=name, phone=phone, person_type='Beneficiary')
+            db.add(new_person)
+            
         db.commit()
         return RedirectResponse(url="/expenses", status_code=303)
     except Exception as e:
@@ -2497,12 +3198,17 @@ def opening_balances_settings(request: Request):
         registers = db.query(Register).all()
         payment_modes = db.query(PaymentMode).all()
         
+        # Fetch existing MAD opening balances mapped as string keys "madId_modeId"
+        initial_balances = db.query(MadInitialBalance).all()
+        existing_balances = {f"{ib.mad_category_id}_{ib.payment_mode_id}": ib.amount for ib in initial_balances}
+        
         template = env.get_template("opening_balances.html")
         return HTMLResponse(content=template.render(
             request=request,
             mad_categories=mad_categories,
             registers=registers,
-            payment_modes=payment_modes
+            payment_modes=payment_modes,
+            existing_balances=existing_balances
         ))
     finally:
         db.close()
@@ -2515,29 +3221,197 @@ async def update_initial_balances(request: Request):
     db = get_db()
     try:
         form = await request.form()
-        category_type = form.get("type")
-        redirect_url = form.get("redirect", "/settings/opening-balances")
+        confirm_password = form.get("confirm_password")
         
+        # Verify admin password
+        if confirm_password != DEFAULT_ADMIN_PASSWORD:
+            mad_categories = db.query(MadCategory).all()
+            registers = db.query(Register).all()
+            payment_modes = db.query(PaymentMode).all()
+            
+            # Extract form values to preserve them in the UI
+            entered_balances = {}
+            for key, value in form.items():
+                if key.startswith("balance_"):
+                    try:
+                        parts = key.split("_")
+                        mad_id = int(parts[1])
+                        mode_id = int(parts[2])
+                        amount = float(value or 0.0)
+                        entered_balances[f"{mad_id}_{mode_id}"] = amount
+                    except Exception:
+                        continue
+            
+            template = env.get_template("opening_balances.html")
+            return HTMLResponse(content=template.render(
+                request=request,
+                mad_categories=mad_categories,
+                registers=registers,
+                payment_modes=payment_modes,
+                existing_balances=entered_balances,
+                error="Incorrect admin password. Balance allocation was not saved!"
+            ))
+            
+        # If password is correct, save the new balances
+        saved_details = []
         for key, value in form.items():
-            if key.startswith("initial_"):
+            if key.startswith("balance_"):
                 try:
-                    cat_id = int(key.split("_")[1])
+                    parts = key.split("_")
+                    mad_id = int(parts[1])
+                    mode_id = int(parts[2])
                     amount = float(value or 0)
                     
-                    if category_type == "mad":
-                        cat = db.query(MadCategory).filter(MadCategory.id == cat_id).first()
-                    elif category_type == "register":
-                        cat = db.query(Register).filter(Register.id == cat_id).first()
-                    elif category_type == "payment":
-                        cat = db.query(PaymentMode).filter(PaymentMode.id == cat_id).first()
+                    # Update or create the MadInitialBalance record
+                    ib = db.query(MadInitialBalance).filter(
+                        and_(MadInitialBalance.mad_category_id == mad_id, MadInitialBalance.payment_mode_id == mode_id)
+                    ).first()
                     
-                    if cat:
-                        cat.initial_balance = amount
+                    if not ib:
+                        ib = MadInitialBalance(mad_category_id=mad_id, payment_mode_id=mode_id)
+                        db.add(ib)
+                    
+                    ib.amount = amount
+                    
+                    if amount > 0:
+                        mad = db.query(MadCategory).filter(MadCategory.id == mad_id).first()
+                        mode = db.query(PaymentMode).filter(PaymentMode.id == mode_id).first()
+                        saved_details.append({
+                            "mad": mad.name if mad else f"ID {mad_id}",
+                            "mode": mode.name if mode else f"ID {mode_id}",
+                            "amount": amount
+                        })
                 except (ValueError, IndexError):
                     continue
         
         db.commit()
-        return RedirectResponse(url=redirect_url, status_code=303)
+        
+        # Recalculate and cache payment mode initial balances
+        payment_modes = db.query(PaymentMode).all()
+        for mode in payment_modes:
+            total_initial = db.query(func.sum(MadInitialBalance.amount)).filter(
+                MadInitialBalance.payment_mode_id == mode.id
+            ).scalar() or 0.0
+            mode.initial_balance = total_initial
+            
+        # Recalculate and cache MAD initial balances
+        mad_categories = db.query(MadCategory).all()
+        for mad in mad_categories:
+            total_initial = db.query(func.sum(MadInitialBalance.amount)).filter(
+                MadInitialBalance.mad_category_id == mad.id
+            ).scalar() or 0.0
+            mad.initial_balance = total_initial
+            
+        db.commit()
+        
+        # Re-fetch the saved balances from DB to populate existing_balances
+        initial_balances = db.query(MadInitialBalance).all()
+        existing_balances = {f"{ib.mad_category_id}_{ib.payment_mode_id}": ib.amount for ib in initial_balances}
+        registers = db.query(Register).all()
+        
+        template = env.get_template("opening_balances.html")
+        return HTMLResponse(content=template.render(
+            request=request,
+            mad_categories=mad_categories,
+            registers=registers,
+            payment_modes=payment_modes,
+            existing_balances=existing_balances,
+            success=True,
+            saved_details=saved_details
+        ))
+    finally:
+        db.close()
+
+@app.get("/directory")
+def directory_page(request: Request, search: str = None, person_type: str = None):
+    auth_redirect = require_auth(request)
+    if auth_redirect: return auth_redirect
+    
+    db = get_db()
+    try:
+        query = db.query(Person)
+        if search:
+            query = query.filter(Person.name.ilike(f"%{search}%") | Person.phone.ilike(f"%{search}%") | Person.address.ilike(f"%{search}%"))
+        if person_type:
+            query = query.filter(Person.person_type == person_type)
+            
+        people = query.order_by(Person.name).all()
+        template = env.get_template("directory.html")
+        return HTMLResponse(content=template.render(request=request, people=people, search=search, person_type=person_type))
+    finally:
+        db.close()
+
+@app.post("/directory/add")
+def add_directory_profile(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(""),
+    address: str = Form(""),
+    person_type: str = Form(...)
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect: return auth_redirect
+    
+    db = get_db()
+    try:
+        new_person = Person(name=name, phone=phone, address=address, person_type=person_type)
+        db.add(new_person)
+        db.commit()
+        return RedirectResponse(url="/directory", status_code=303)
+    finally:
+        db.close()
+
+@app.post("/directory/edit")
+def edit_directory_profile(
+    request: Request,
+    person_id: int = Form(...),
+    name: str = Form(...),
+    phone: str = Form(""),
+    address: str = Form(""),
+    person_type: str = Form(...)
+):
+    auth_redirect = require_auth(request)
+    if auth_redirect: return auth_redirect
+    
+    db = get_db()
+    try:
+        person = db.query(Person).filter(Person.id == person_id).first()
+        if person:
+            old_name = person.name
+            
+            person.name = name
+            person.phone = phone
+            person.address = address
+            person.person_type = person_type
+            
+            # Update all related receipts and expenses with new details
+            from sqlalchemy import func
+            db.query(Receipt).filter(func.lower(Receipt.name) == old_name.lower()).update(
+                {"name": name, "phone": phone, "address": address}, 
+                synchronize_session=False
+            )
+            db.query(Expense).filter(func.lower(Expense.name) == old_name.lower()).update(
+                {"name": name, "phone": phone}, 
+                synchronize_session=False
+            )
+            
+            db.commit()
+        return RedirectResponse(url="/directory", status_code=303)
+    finally:
+        db.close()
+
+@app.post("/directory/delete/{person_id}")
+def delete_directory_profile(request: Request, person_id: int):
+    auth_redirect = require_auth(request)
+    if auth_redirect: return auth_redirect
+    
+    db = get_db()
+    try:
+        person = db.query(Person).filter(Person.id == person_id).first()
+        if person:
+            db.delete(person)
+            db.commit()
+        return RedirectResponse(url="/directory", status_code=303)
     finally:
         db.close()
 

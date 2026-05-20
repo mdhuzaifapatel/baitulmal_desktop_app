@@ -1,0 +1,653 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Custom styles for UI & Printing -->
+<style>
+  :root {
+    --primary-teal: #0F766E;
+    --primary-accent: #0D9488;
+    --dark-slate: #1E293B;
+    --slate-border: #E2E8F0;
+    --light-bg: #F8FAFC;
+  }
+
+  .text-teal { color: var(--primary-teal) !important; }
+  .bg-teal { background-color: var(--primary-teal) !important; }
+  .border-teal { border-color: var(--primary-teal) !important; }
+
+  /* Diagnostic card styles */
+  .diag-card {
+    background: #ffffff;
+    border: 1px solid var(--slate-border);
+    border-radius: 12px;
+    transition: all 0.25s ease;
+  }
+  .diag-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  }
+
+  .progress {
+    height: 10px;
+    border-radius: 5px;
+    background-color: #E2E8F0;
+  }
+
+  .custom-badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Table styling */
+  .audit-table th {
+    background-color: var(--light-bg);
+    color: var(--dark-slate);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--slate-border);
+  }
+
+  /* Print specific stylesheet overrides */
+  @media print {
+    /* Hide screen elements */
+    .navbar, .navbar-nav, .btn, .filter-section, .no-print, header, footer, #sidebar {
+      display: none !important;
+    }
+    
+    body {
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-size: 10pt !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .container, .container-fluid {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+
+    /* Print header */
+    .print-header {
+      display: block !important;
+      text-align: center;
+      margin-bottom: 25px;
+      border-bottom: 2px double #000000;
+      padding-bottom: 10px;
+    }
+
+    /* Tables formatting for print */
+    .table-responsive {
+      overflow: visible !important;
+    }
+    table {
+      page-break-inside: auto;
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+    tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+    thead {
+      display: table-header-group;
+    }
+    th, td {
+      border: 1px solid #000000 !important;
+      padding: 6px 8px !important;
+      font-size: 9pt !important;
+    }
+    th {
+      background-color: #f1f5f9 !important;
+      color: #000000 !important;
+      font-weight: bold !important;
+    }
+    
+    /* Audit card updates for print */
+    .diag-card {
+      border: 1px solid #000000 !important;
+      box-shadow: none !important;
+      background: #ffffff !important;
+      margin-bottom: 15px !important;
+      page-break-inside: avoid;
+    }
+
+    .card {
+      border: 1px solid #000000 !important;
+      box-shadow: none !important;
+      margin-bottom: 20px !important;
+      page-break-inside: avoid;
+    }
+
+    .alert {
+      border: 1px solid #000000 !important;
+      color: #000000 !important;
+      background: #ffffff !important;
+    }
+
+    /* Page breaks */
+    .page-break {
+      page-break-before: always;
+    }
+
+    /* Signature block */
+    .signature-block {
+      display: flex !important;
+      justify-content: space-between;
+      margin-top: 50px;
+      page-break-inside: avoid;
+    }
+    .sig-col {
+      width: 30%;
+      text-align: center;
+      border-top: 1px solid #000000;
+      padding-top: 5px;
+      font-size: 9pt;
+    }
+
+    /* Page settings */
+    @page {
+      size: A4 portrait;
+      margin: 1.5cm 1.2cm 1.5cm 1.2cm;
+    }
+  }
+
+  /* Screen-only styling for print header */
+  .print-header {
+    display: none;
+  }
+</style>
+
+<!-- Screen Title Block -->
+<div class="row mb-4 align-items-center no-print">
+  <div class="col-md-7">
+    <h2 class="fw-bold text-dark mb-1"><i class="bi bi-file-earmark-ruled text-teal"></i> Audit Compliance Report</h2>
+    <p class="text-muted mb-0">NGO / Trust standard balance sheets and regulatory compliance metrics.</p>
+  </div>
+  <div class="col-md-5 text-md-end mt-3 mt-md-0">
+    <button onclick="downloadExcel()" class="btn btn-success text-white shadow-sm">
+      <i class="bi bi-file-earmark-excel"></i> Download Excel
+    </button>
+    <button onclick="window.print()" class="btn btn-secondary shadow-sm ms-2" title="Print this page">
+      <i class="bi bi-printer"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Print-Only Heading -->
+<div class="print-header">
+  <h3 class="fw-bold text-uppercase mb-1" style="font-size: 18pt;">Hazrat Sher-E-Sawar (RH) Baitulmal Trust</h3>
+  <h5 class="fw-semibold text-muted mb-2" style="font-size: 12pt;">Official Audit Compliance Report</h5>
+  <div class="small text-secondary">
+    <strong>Statement Period:</strong> {{ title_suffix }} &nbsp;|&nbsp; 
+    <strong>Date of Audit:</strong> {{ now.strftime('%d-%m-%Y') if now else '' }}
+  </div>
+</div>
+
+<!-- Filter Section (Screen Only) -->
+<div class="card border-0 shadow-sm mb-4 filter-section no-print">
+  <div class="card-body p-3 bg-light rounded">
+    <div class="row align-items-end">
+      <!-- Filter Type Selector -->
+      <div class="col-md-3 mb-2 mb-md-0">
+        <label for="filter_type" class="form-label fw-bold small text-secondary">Filter Type</label>
+        <select id="filter_type" class="form-select" onchange="toggleFilterInputs()">
+          <option value="current_fy" {% if filter_type == 'current_fy' %}selected{% endif %}>Financial Year</option>
+          <option value="manual" {% if filter_type == 'manual' %}selected{% endif %}>Custom Date Range</option>
+        </select>
+      </div>
+
+      <!-- Financial Year Dropdown -->
+      <div class="col-md-3 mb-2 mb-md-0" id="fy_container">
+        <label for="fy_selector" class="form-label fw-bold small text-secondary">Select Year</label>
+        <select id="fy_selector" class="form-select">
+          {% for year in available_years %}
+          <option value="{{ year }}" {% if year == current_fy %}selected{% endif %}>
+            FY {{ year }}-{{ year + 1 }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Custom Date Inputs -->
+      <div class="col-md-3 mb-2 mb-md-0 d-none" id="start_date_container">
+        <label for="start_date" class="form-label fw-bold small text-secondary">Start Date</label>
+        <input type="date" id="start_date" class="form-control" value="{{ start_date }}">
+      </div>
+      <div class="col-md-3 mb-2 mb-md-0 d-none" id="end_date_container">
+        <label for="end_date" class="form-label fw-bold small text-secondary">End Date</label>
+        <input type="date" id="end_date" class="form-control" value="{{ end_date }}">
+      </div>
+
+      <!-- Apply Button -->
+      <div class="col-md-2">
+        <button onclick="applyFilters()" class="btn btn-teal text-white w-100 fw-bold">
+          <i class="bi bi-filter"></i> Apply
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Financial Summary Cards -->
+<div class="row mb-4">
+  <div class="col-md-3 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body py-3 text-center">
+        <h6 class="text-muted mb-1 text-uppercase small fw-bold">Combined Opening</h6>
+        <h4 class="mb-0 text-teal fw-bold">{{ total_opening | indian_currency }}</h4>
+        <span class="text-muted small">All Payment Modes</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body py-3 text-center">
+        <h6 class="text-muted mb-1 text-uppercase small fw-bold">Total Receipts (In)</h6>
+        <h4 class="mb-0 text-success fw-bold">+{{ total_receipts | indian_currency }}</h4>
+        <span class="text-muted small">{{ total_tx_count }} Total Receipts</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body py-3 text-center">
+        <h6 class="text-muted mb-1 text-uppercase small fw-bold">Total Expenses (Out)</h6>
+        <h4 class="mb-0 text-danger fw-bold">-{{ total_expenses | indian_currency }}</h4>
+        <span class="text-muted small">Revenue + Fixed Assets</span>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3 mb-3">
+    <div class="card bg-white border-0 shadow-sm h-100">
+      <div class="card-body py-3 text-center">
+        <h6 class="text-muted mb-1 text-uppercase small fw-bold">Combined Closing</h6>
+        <h4 class="mb-0 text-dark fw-bold">{{ total_closing | indian_currency }}</h4>
+        <span class="text-muted small">All Payment Modes</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ledger Reconciliation Checker -->
+<div class="alert {% if reconciled %}alert-success border-success{% else %}alert-danger border-danger{% endif %} shadow-sm d-flex align-items-center mb-4 py-3" role="alert" style="border-left: 5px solid {% if reconciled %}#198754{% else %}#dc3545{% endif %} !important;">
+  <i class="bi {% if reconciled %}bi-check-circle-fill text-success{% else %}bi-exclamation-triangle-fill text-danger{% endif %} fs-3 me-3"></i>
+  <div class="w-100">
+    <div class="d-flex justify-content-between align-items-center flex-wrap">
+      <div>
+        <h5 class="alert-heading fw-bold mb-1">Ledger Reconciliation Audit Diagnostic</h5>
+        <p class="mb-0 small">
+          Checking if the sum of all Cash & Bank Accounts (₹{{ total_closing | indian_currency }}) equals the sum of all MAD allocation categories (₹{{ total_mads_closing | indian_currency }}).
+        </p>
+      </div>
+      <div class="mt-2 mt-md-0">
+        {% if reconciled %}
+        <span class="badge bg-success fs-6 px-3 py-2 uppercase">Balanced & Reconciled</span>
+        {% else %}
+        <span class="badge bg-danger fs-6 px-3 py-2 uppercase">Mismatch Found: ₹{{ reconciliation_discrepancy | indian_currency }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NGO Statutory & Compliance Checks -->
+<h5 class="fw-bold text-dark mb-3"><i class="bi bi-shield-check text-teal"></i> NGO Regulatory & Audit Compliance Indicators</h5>
+<div class="row mb-4">
+  <!-- Administrative Overhead Ratio -->
+  <div class="col-md-4 mb-3">
+    <div class="diag-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <h6 class="fw-bold text-secondary mb-0">Admin Overhead Ratio</h6>
+        <span class="custom-badge {% if admin_ratio <= 20 %}bg-success text-white{% else %}bg-warning text-dark{% endif %}">
+          {% if admin_ratio <= 20 %}Compliant{% else %}Warning{% endif %}
+        </span>
+      </div>
+      <h3 class="fw-bold text-dark mb-1">{{ "%.2f"|format(admin_ratio) }}%</h3>
+      <p class="text-muted small mb-3">
+        Administrative expenses total <strong>{{ total_admin_expenses | indian_currency }}</strong> out of total revenue expenses of <strong>{{ total_expenses | indian_currency }}</strong>.
+      </p>
+      <div class="progress mb-2">
+        <div class="progress-bar {% if admin_ratio <= 20 %}bg-success{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ admin_ratio }}%" aria-valuenow="{{ admin_ratio }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+      <span class="text-muted small d-block" style="font-size: 0.75rem;">NGO limit target: Max 20% of total revenue expenditure.</span>
+    </div>
+  </div>
+
+  <!-- Cash holding Concentration -->
+  <div class="col-md-4 mb-3">
+    <div class="diag-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <h6 class="fw-bold text-secondary mb-0">Cash Holdings Ratio</h6>
+        <span class="custom-badge {% if cash_ratio <= 15 %}bg-success text-white{% else %}bg-warning text-dark{% endif %}">
+          {% if cash_ratio <= 15 %}Low Cash{% else %}Moderate{% endif %}
+        </span>
+      </div>
+      <h3 class="fw-bold text-dark mb-1">{{ "%.2f"|format(cash_ratio) }}%</h3>
+      <p class="text-muted small mb-3">
+        Cash-in-hand accounts for <strong>{{ total_cash_closing | indian_currency }}</strong>, while bank accounts hold <strong>{{ total_bank_closing | indian_currency }}</strong>.
+      </p>
+      <div class="progress mb-2">
+        <div class="progress-bar bg-info" role="progressbar" style="width: {{ cash_ratio }}%" aria-valuenow="{{ cash_ratio }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+      <span class="text-muted small d-block" style="font-size: 0.75rem;">Audit Tip: Keep physical cash holdings minimal to minimize auditor liability.</span>
+    </div>
+  </div>
+
+  <!-- Audit Trail completeness -->
+  <div class="col-md-4 mb-3">
+    <div class="diag-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <h6 class="fw-bold text-secondary mb-0">Audit Trail Integrity</h6>
+        <span class="custom-badge {% if trail_completeness >= 95 %}bg-success text-white{% else %}bg-danger text-white{% endif %}">
+          {% if trail_completeness >= 95 %}Strong{% else %}Weak{% endif %}
+        </span>
+      </div>
+      <h3 class="fw-bold text-dark mb-1">{{ "%.2f"|format(trail_completeness) }}%</h3>
+      <p class="text-muted small mb-3">
+        <strong>{{ total_tx_count - total_missing_phone }}</strong> out of <strong>{{ total_tx_count }}</strong> transactions are complete with verifiable mobile contacts.
+      </p>
+      <div class="progress mb-2">
+        <div class="progress-bar {% if trail_completeness >= 95 %}bg-success{% else %}bg-danger{% endif %}" role="progressbar" style="width: {{ trail_completeness }}%" aria-valuenow="{{ trail_completeness }}" aria-valuemin="0" aria-valuemax="100"></div>
+      </div>
+      <span class="text-muted small d-block" style="font-size: 0.75rem;">Regulatory standard: Min 95% complete phone trail for receipts & vouchers.</span>
+    </div>
+  </div>
+</div>
+
+<!-- DETAILED STATEMENTS -->
+
+<!-- Statement 1: Cash & Bank Accounts (Payment Modes) -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-teal text-white py-3">
+    <h5 class="card-title fw-bold mb-0"><i class="bi bi-wallet2"></i> Statement of Cash & Bank Balances (Payment Modes)</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover audit-table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th class="ps-4">Account / Payment Mode</th>
+            <th class="text-end">Opening Balance</th>
+            <th class="text-end">Receipts (Inflow)</th>
+            <th class="text-end">Contra In (+ Transfer)</th>
+            <th class="text-end">Contra Out (- Transfer)</th>
+            <th class="text-end">Expenses (Outflow)</th>
+            <th class="text-end pe-4">Closing Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mode in payment_modes %}
+          <tr>
+            <td class="fw-bold ps-4 text-dark">{{ mode.name }}</td>
+            <td class="text-end text-muted">{{ mode.opening | indian_currency }}</td>
+            <td class="text-end text-success">+{{ mode.receipts | indian_currency }}</td>
+            <td class="text-end text-info">+{{ mode.contra_in | indian_currency }}</td>
+            <td class="text-end text-warning">-{{ mode.contra_out | indian_currency }}</td>
+            <td class="text-end text-danger">-{{ mode.expenses | indian_currency }}</td>
+            <td class="text-end fw-bold pe-4 text-dark">{{ mode.closing | indian_currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td class="ps-4 text-teal">Grand Total</td>
+            <td class="text-end">{{ total_opening | indian_currency }}</td>
+            <td class="text-end text-success">+{{ total_receipts | indian_currency }}</td>
+            <td class="text-end text-info">+{{ payment_modes | sum(attribute='contra_in') | indian_currency }}</td>
+            <td class="text-end text-warning">-{{ payment_modes | sum(attribute='contra_out') | indian_currency }}</td>
+            <td class="text-end text-danger">-{{ total_expenses | indian_currency }}</td>
+            <td class="text-end pe-4 text-teal">{{ total_closing | indian_currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Statement 2: MAD Categories Allocation Ledger -->
+<div class="card shadow-sm border-0 mb-4 page-break">
+  <div class="card-header bg-teal text-white py-3">
+    <h5 class="card-title fw-bold mb-0"><i class="bi bi-pie-chart-fill"></i> Statement of MAD Allocations & Reserves</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover audit-table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th class="ps-4">MAD Category Name</th>
+            <th class="text-end">Opening Allocation</th>
+            <th class="text-end">Collection Receipts (In)</th>
+            <th class="text-end">Disbursements / Expenses (Out)</th>
+            <th class="text-end pe-4">Closing Balance / Reserve</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mad in mad_categories %}
+          <tr>
+            <td class="fw-bold ps-4 text-dark">{{ mad.name }}</td>
+            <td class="text-end text-muted">{{ mad.opening | indian_currency }}</td>
+            <td class="text-end text-success">+{{ mad.period_in | indian_currency }}</td>
+            <td class="text-end text-danger">-{{ mad.period_out | indian_currency }}</td>
+            <td class="text-end fw-bold pe-4 text-dark">{{ mad.closing | indian_currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td class="ps-4 text-teal">Grand Total</td>
+            <td class="text-end">{{ mad_categories | sum(attribute='opening') | indian_currency }}</td>
+            <td class="text-end text-success">+{{ mad_categories | sum(attribute='period_in') | indian_currency }}</td>
+            <td class="text-end text-danger">-{{ mad_categories | sum(attribute='period_out') | indian_currency }}</td>
+            <td class="text-end pe-4 text-teal">{{ total_mads_closing | indian_currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Statement 3: Fixed Assets Acquisitions & Capital Outlays -->
+<div class="card shadow-sm border-0 mb-4 page-break">
+  <div class="card-header bg-teal text-white py-3">
+    <h5 class="card-title fw-bold mb-0"><i class="bi bi-tools"></i> Statement of Capital Expenditures & Fixed Asset Additions</h5>
+  </div>
+  <div class="card-body p-0">
+    {% if fixed_assets %}
+    <div class="table-responsive">
+      <table class="table table-hover audit-table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th class="ps-4">Voucher No</th>
+            <th>Acquisition Date</th>
+            <th>Paid To / Vendor</th>
+            <th>Asset Description / Notes</th>
+            <th class="text-end pe-4">Acquisition Cost (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for asset in fixed_assets %}
+          <tr>
+            <td class="fw-bold ps-4 text-dark">{{ asset.voucher_no }}</td>
+            <td>{{ asset.date }}</td>
+            <td>{{ asset.name }}</td>
+            <td class="text-muted">{{ asset.description }}</td>
+            <td class="text-end pe-4 fw-bold text-dark">{{ asset.amount | indian_currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td colspan="4" class="ps-4 text-teal">Total Capital Expenditure Outlay</td>
+            <td class="text-end pe-4 text-teal">{{ total_fixed_assets_amount | indian_currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">
+      <i class="bi bi-info-circle fs-4 d-block mb-2 text-secondary"></i>
+      No capital assets purchased or capitalized under the "Fixed assets" category during this period.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Statement 4: Revenue Expenditures Summary -->
+<div class="card shadow-sm border-0 mb-4 page-break">
+  <div class="card-header bg-teal text-white py-3">
+    <h5 class="card-title fw-bold mb-0"><i class="bi bi-file-earmark-bar-graph-fill"></i> Income Application / Revenue Expenditure Breakdown</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover audit-table mb-0 align-middle">
+        <thead>
+          <tr>
+            <th class="ps-4">Expenditure Category</th>
+            <th class="text-center">Voucher Count</th>
+            <th>Overhead Classification</th>
+            <th class="text-end pe-4">Total Amount Spent (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in expense_categories %}
+          <tr>
+            <td class="fw-bold ps-4 text-dark">{{ item.name }}</td>
+            <td class="text-center text-muted">{{ item.count }}</td>
+            <td>
+              {% if item.classification == 'asset' %}
+                Capital Asset
+              {% elif item.classification == 'admin' %}
+                Administrative Overhead
+              {% else %}
+                Charitable / Welfare Aid
+              {% endif %}
+            </td>
+            <td class="text-end pe-4 fw-bold text-dark">{{ item.amount | indian_currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+          <tr>
+            <td class="ps-4 text-teal">Total Operational & Welfare Expenditures</td>
+            <td class="text-center">{{ expense_categories | sum(attribute='count') }}</td>
+            <td>-</td>
+            <td class="text-end pe-4 text-teal">{{ expense_categories | sum(attribute='amount') | indian_currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Signature Block (For PDF & Print layout) -->
+<div class="signature-block">
+  <div class="sig-col">
+    <br><br>
+    <strong>Prepared By:</strong><br>
+    Trust Accountant / Clerk
+  </div>
+  <div class="sig-col">
+    <br><br>
+    <strong>Reviewed By:</strong><br>
+    Managing Trustee / Trustee
+  </div>
+  <div class="sig-col">
+    <br><br>
+    <strong>Certified & Approved By:</strong><br>
+    Chartered Accountant (Auditor / Firm Stamp)
+  </div>
+</div>
+
+<!-- JavaScript Logic -->
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    toggleFilterInputs();
+  });
+
+  function toggleFilterInputs() {
+    const filterType = document.getElementById("filter_type").value;
+    const fyContainer = document.getElementById("fy_container");
+    const startDateContainer = document.getElementById("start_date_container");
+    const endDateContainer = document.getElementById("end_date_container");
+
+    if (filterType === "current_fy") {
+      fyContainer.classList.remove("d-none");
+      startDateContainer.classList.add("d-none");
+      endDateContainer.classList.add("d-none");
+    } else {
+      fyContainer.classList.add("d-none");
+      startDateContainer.classList.remove("d-none");
+      endDateContainer.classList.remove("d-none");
+    }
+  }
+
+  function applyFilters() {
+    const filterType = document.getElementById("filter_type").value;
+    let url = `/audit-report?filter_type=${filterType}`;
+
+    if (filterType === "current_fy") {
+      const fy = document.getElementById("fy_selector").value;
+      url += `&fy=${fy}`;
+    } else {
+      const start = document.getElementById("start_date").value;
+      const end = document.getElementById("end_date").value;
+      
+      if (!start || !end) {
+        alert("Please select both start and end dates.");
+        return;
+      }
+      url += `&start_date=${start}&end_date=${end}`;
+    }
+
+    window.location.href = url;
+  }
+
+
+
+  function downloadExcel() {
+    const filterType = document.getElementById("filter_type").value;
+    let url = `/audit-report/download?filter_type=${filterType}`;
+
+    if (filterType === "current_fy") {
+      const fy = document.getElementById("fy_selector").value;
+      url += `&fy=${fy}`;
+    } else {
+      const start = document.getElementById("start_date").value;
+      const end = document.getElementById("end_date").value;
+      
+      if (!start || !end) {
+        alert("Please select both start and end dates for download.");
+        return;
+      }
+      url += `&start_date=${start}&end_date=${end}`;
+    }
+
+    openDownloadModal(url);
+  }
+
+  function openDownloadModal(url) {
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          alert(data.message);
+        } else {
+          alert("Error: " + data.message);
+        }
+      })
+      .catch(err => {
+        console.error("Download error:", err);
+        window.location.href = url;
+      });
+  }
+</script>
+{% endblock %}

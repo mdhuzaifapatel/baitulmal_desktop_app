@@ -38,6 +38,7 @@
             class="form-control"
             value="{{ receipt.name }}"
             list="names-list"
+            oninput="handleNameSelect(this)"
             required
           />
           <datalist id="names-list"></datalist>
@@ -117,33 +118,37 @@
 </div>
 
 <script>
+  let peopleData = [];
+
   // Fetch unique names for suggestions (Receipts only)
   fetch('/api/names/receipts')
     .then(response => response.json())
-    .then(names => {
+    .then(people => {
+      peopleData = people;
       const list = document.getElementById('names-list');
-      names.forEach(name => {
+      people.forEach(person => {
         const option = document.createElement('option');
-        option.value = name;
+        option.value = person.name;
         list.appendChild(option);
       });
     });
 
-  function formatAmountDisplay() {
-    const val = document.getElementById('amount').value;
-    if (!val) {
-      document.getElementById('amount-formatted').innerText = '';
-      return;
+  function handleNameSelect(input) {
+    const val = input.value.trim().toLowerCase();
+    const selectedPerson = peopleData.find(p => p.name.toLowerCase() === val);
+    if (selectedPerson) {
+      document.getElementById('phone').value = selectedPerson.phone || '';
+      document.getElementById('address').value = selectedPerson.address || '';
     }
-    const amount = parseFloat(val);
-    const formatted = new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2
-    }).format(amount);
-    document.getElementById('amount-formatted').innerText = formatted;
   }
-  // Initialize on load
-  document.addEventListener('DOMContentLoaded', formatAmountDisplay);
+
+  // Datalist selections reliably fire 'change'
+  document.addEventListener('DOMContentLoaded', function() {
+    const nameInput = document.getElementById('name');
+    if (nameInput) {
+      nameInput.addEventListener('change', function() { handleNameSelect(this); });
+    }
+    formatAmountDisplay();
+  });
 </script>
 {% endblock %}

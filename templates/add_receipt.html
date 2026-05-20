@@ -48,7 +48,7 @@
             id="name"
             class="form-control"
             list="names-list"
-            oninput="capitalizeName(this)"
+            oninput="handleNameSelect(this)"
             placeholder="Person or Donor Name"
             value="{{ name or '' }}"
             required
@@ -183,17 +183,29 @@
     document.getElementById("date").valueAsDate = new Date();
   }
 
+  let peopleData = [];
+
   // Fetch unique names for suggestions (Receipts only)
   fetch('/api/names/receipts')
     .then(response => response.json())
-    .then(names => {
+    .then(people => {
+      peopleData = people;
       const list = document.getElementById('names-list');
-      names.forEach(name => {
+      people.forEach(person => {
         const option = document.createElement('option');
-        option.value = name;
+        option.value = person.name;
         list.appendChild(option);
       });
     });
+
+  function handleNameSelect(input) {
+    capitalizeName(input);
+    const selectedPerson = peopleData.find(p => p.name === input.value);
+    if (selectedPerson) {
+      document.getElementById('phone').value = selectedPerson.phone || '';
+      document.getElementById('address').value = selectedPerson.address || '';
+    }
+  }
 
   function capitalizeName(input) {
     const words = input.value.split(' ');

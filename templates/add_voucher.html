@@ -28,7 +28,7 @@
       <div class="row mb-4">
         <div class="col-md-6">
           <label for="name" class="form-label">Name (Paid To) *</label>
-          <input type="text" name="name" id="name" class="form-control" list="names-list" oninput="capitalizeName(this)" placeholder="Person or Vendor name" value="{{ name or '' }}" required />
+          <input type="text" name="name" id="name" class="form-control" list="names-list" oninput="handleNameSelect(this)" placeholder="Person or Vendor name" value="{{ name or '' }}" required />
           <datalist id="names-list"></datalist>
         </div>
         <div class="col-md-6">
@@ -59,12 +59,13 @@
         </div>
         <div class="col-md-4">
           <label for="payment_mode_id" class="form-label">Payment Mode *</label>
-          <select name="payment_mode_id" id="payment_mode_id" class="form-select" required>
+          <select name="payment_mode_id" id="payment_mode_id" class="form-select" onchange="fetchPaymentBalance()" required>
             <option value="">Select Mode</option>
             {% for mode in payment_modes %}
             <option value="{{ mode.id }}" {% if payment_mode_id|string == mode.id|string %}selected{% endif %}>{{ mode.name }}</option>
             {% endfor %}
           </select>
+          <div id="payment-balance-display" class="form-text text-success fw-bold mt-1" style="min-height: 1.5em;"></div>
         </div>
       </div>
 
@@ -100,16 +101,27 @@
     document.getElementById("date").valueAsDate = new Date();
   }
 
+  let peopleData = [];
+
   fetch('/api/names/vouchers')
     .then(response => response.json())
-    .then(names => {
+    .then(people => {
+      peopleData = people;
       const list = document.getElementById('names-list');
-      names.forEach(name => {
+      people.forEach(person => {
         const option = document.createElement('option');
-        option.value = name;
+        option.value = person.name;
         list.appendChild(option);
       });
     });
+
+  function handleNameSelect(input) {
+    capitalizeName(input);
+    const selectedPerson = peopleData.find(p => p.name === input.value);
+    if (selectedPerson) {
+      document.getElementById('phone').value = selectedPerson.phone || '';
+    }
+  }
 
   function capitalizeName(input) {
     const words = input.value.split(' ');
@@ -130,6 +142,36 @@
     display.className = 'form-text text-muted fw-bold mt-1';
     
     fetch(`/api/mad-balance/${madId}`)
+      .then(response => response.json())
+      .then(data => {
+        display.innerText = 'Remaining Balance: ' + data.formatted_balance;
+        display.className = 'form-text text-success fw-bold mt-1';
+        
+        // Optional: warn if balance is low or negative
+        if (data.balance < 0) {
+          display.className = 'form-text text-danger fw-bold mt-1';
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching balance:', err);
+        display.innerText = 'Error fetching balance';
+        display.className = 'form-text text-danger fw-bold mt-1';
+      });
+  }
+
+  function fetchPaymentBalance() {
+    const paymentId = document.getElementById('payment_mode_id').value;
+    const display = document.getElementById('payment-balance-display');
+    
+    if (!paymentId) {
+      display.innerText = '';
+      return;
+    }
+    
+    display.innerText = 'Fetching balance...';
+    display.className = 'form-text text-muted fw-bold mt-1';
+    
+    fetch(`/api/payment-balance/${paymentId}`)
       .then(response => response.json())
       .then(data => {
         display.innerText = 'Remaining Balance: ' + data.formatted_balance;
